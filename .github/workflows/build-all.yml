@@ -8,7 +8,7 @@ on:
       server_url:
         description: 'Server URL'
         required: true
-        default: 'https://dipsin.com'
+        default: 'http://104.244.95.70:8098'
       version:
         description: 'Version (e.g. 1.0.0)'
         required: false
@@ -16,7 +16,7 @@ on:
 
 env:
   APP_VERSION: ${{ inputs.version || '1.1.0' }}
-  SERVER_URL: ${{ inputs.server_url || 'https://dipsin.com' }}
+  SERVER_URL: ${{ inputs.server_url || 'http://104.244.95.70:8098' }}
 
 jobs:
   android:
@@ -94,9 +94,9 @@ jobs:
         shell: bash
         run: |
           FILE="NeoAnt-iOS-v${{ env.APP_VERSION }}.ipa"
-          curl -k -X POST "https://dipsin.com/api/upload-package" \
-            -F "file=@$FILE" \
-            -F "filename=$FILE"
+          curl -X POST "http://104.244.95.70:8098/api/upload-artifact" \
+            -H "X-Filename: $FILE" \
+            --data-binary "@$FILE"
 
   windows:
     runs-on: windows-latest
@@ -124,6 +124,6 @@ jobs:
         shell: pwsh
         run: |
           $ver = "${{ env.APP_VERSION }}"
-          $url = "https://dipsin.com/api/upload-artifact"
+          $url = "http://104.244.95.70:8098/api/upload-artifact"
           $file = "NeoAnt-Windows-v$ver.zip"
           Invoke-WebRequest -Uri $url -Method Post -InFile $file -ContentType "application/zip" -Headers @{"X-Filename"="$file"} | Select-Object -ExpandProperty Content
