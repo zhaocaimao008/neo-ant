@@ -57,7 +57,8 @@ ConversationData _conversationFromMap(Map m) {
 
 class ChatListPage extends StatefulWidget {
   final String? userId;
-  const ChatListPage({super.key, this.userId});
+  final Function(String conversationId, String conversationName, String? targetUserId, bool isGroup, bool online)? onConversationTap;
+  const ChatListPage({super.key, this.userId, this.onConversationTap});
 
   @override
   State<ChatListPage> createState() => _ChatListPageState();
@@ -447,14 +448,14 @@ class _ChatListPageState extends State<ChatListPage> {
         children: [
           if (pinned.isNotEmpty) ...[
             _SectionLabel(label: '置顶对话', isDark: isDark),
-            ...pinned.map((c) => _ConvTile(c: c, isDark: isDark, userId: _userId)),
+            ...pinned.map((c) => _ConvTile(c: c, isDark: isDark, userId: _userId, onTap: widget.onConversationTap)),
             Divider(indent: 16, endIndent: 16, height: 1,
                 color: isDark ? const Color(0xFF2E2E2E) : const Color(0xFFE9E9E9)),
           ],
           if (normal.isEmpty && pinned.isEmpty)
             _EmptyState(isDark: isDark)
           else
-            ...normal.map((c) => _ConvTile(c: c, isDark: isDark, userId: _userId)),
+            ...normal.map((c) => _ConvTile(c: c, isDark: isDark, userId: _userId, onTap: widget.onConversationTap)),
         ],
       ),
     );
@@ -605,8 +606,9 @@ class _ConvTile extends StatelessWidget {
   final ConversationData c;
   final bool isDark;
   final String userId;
+  final Function(String conversationId, String conversationName, String? targetUserId, bool isGroup, bool online)? onTap;
 
-  const _ConvTile({required this.c, required this.isDark, required this.userId});
+  const _ConvTile({required this.c, required this.isDark, required this.userId, this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -614,7 +616,10 @@ class _ConvTile extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: () {
-          if (c.isGroup) {
+          if (onTap != null) {
+            onTap!(c.id, c.name, c.targetUserId, c.isGroup, c.online);
+          } else {
+            if (c.isGroup) {
             Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => GroupChatPage(
                 userId: userId,
