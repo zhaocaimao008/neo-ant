@@ -21,6 +21,7 @@ jobs:
         run: |
           rm -rf ios
           flutter create --platforms=ios .
+          flutter pub get
       - run: flutter precache --ios
       - name: Check ios directory
         run: ls -la ios/ || echo 'ios dir missing'

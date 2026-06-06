@@ -27,7 +27,7 @@ jobs:
       - name: Create ZIP
         shell: powershell
         run: |
-          Compress-Archive -Path build\windows\runner\Release\* -DestinationPath NeoAnt-Windows.zip -Force
+          Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath NeoAnt-Windows.zip -Force
       - uses: actions/upload-artifact@v4
         with:
           name: neo-ant-windows-release

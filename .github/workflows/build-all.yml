@@ -55,6 +55,7 @@ jobs:
         run: |
           rm -rf ios
           flutter create --platforms=ios .
+          flutter pub get
       - run: |
           cd ios && pod install --repo-update
       - run: |
@@ -85,7 +86,7 @@ jobs:
           flutter build windows --release --dart-define=SERVER_URL=${{ inputs.server_url }} --build-name=${{ inputs.version }}
       - shell: pwsh
         run: |
-          Compress-Archive -Path build\windows\runner\Release\* `
+          Compress-Archive -Path build\windows\x64\runner\Release\* `
             -DestinationPath NeoAnt-Windows-v${{ inputs.version }}.zip
       - uses: actions/upload-artifact@v4
         with:
