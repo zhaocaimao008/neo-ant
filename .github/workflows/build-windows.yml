@@ -7,63 +7,26 @@ on:
         description: 'Server URL (e.g. https://dipsin.com)'
         required: true
         default: 'https://dipsin.com'
-      build_mode:
-        description: 'Build mode'
-        type: choice
-        options: [debug, release]
-        default: release
 
 jobs:
   build-windows:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@v2
         with:
           channel: stable
-
-      - name: Install dependencies
-        run: flutter pub get
-
-      - name: Enable Windows Desktop
-        run: flutter config --enable-windows-desktop
-
-      - name: Build Windows EXE
-        run: |
+      - run: flutter pub get
+      - run: flutter config --enable-windows-desktop
+      - run: |
           flutter build windows --release `
             --dart-define=SERVER_URL=${{ inputs.server_url }}
-
-      - name: Create Installer (Inno Setup)
-        shell: pwsh
+      - shell: pwsh
         run: |
-          # Create Inno Setup script
-          @"
-          [Setup]
-          AppName=NeoAnt
-          AppVersion=1.0.0
-          DefaultDirName={autopf}\NeoAnt
-          DefaultGroupName=NeoAnt
-          OutputDir=.\build\windows\installer
-          OutputBaseFilename=NeoAnt-Setup-1.0.0
-          
-          [Files]
-          Source: ".\build\windows\runner\Release\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-          
-          [Icons]
-          Name: "{group}\NeoAnt"; Filename: "{app}\neo_ant.exe"
-          Name: "{commondesktop}\NeoAnt"; Filename: "{app}\neo_ant.exe"
-          "@ | Out-File -FilePath setup.iss -Encoding ASCII
-          
-          # Download and run Inno Setup
-          # Note: Inno Setup needs to be installed on the runner
-          # Alternative: just zip the build output
-          Compress-Archive -Path .\build\windows\runner\Release\* -DestinationPath .\build\windows\NeoAnt-Windows.zip
-
-      - name: Upload Windows Artifact
-        uses: actions/upload-artifact@v4
+          Compress-Archive -Path build\windows\runner\Release\* `
+            -DestinationPath NeoAnt-Windows.zip
+      - uses: actions/upload-artifact@v4
         with:
-          name: neo-ant-windows-${{ inputs.build_mode }}
-          path: build/windows/NeoAnt-Windows.zip
+          name: neo-ant-windows-release
+          path: NeoAnt-Windows.zip
           retention-days: 7
