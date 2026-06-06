@@ -12,7 +12,11 @@ on:
       version:
         description: 'Version (e.g. 1.0.0)'
         required: false
-        default: '1.0.0'
+        default: '1.1.0'
+
+env:
+  APP_VERSION: ${{ inputs.version || '1.1.0' }}
+  SERVER_URL: ${{ inputs.server_url || 'https://dipsin.com' }}
 
 jobs:
   android:
@@ -37,11 +41,11 @@ jobs:
           PROPEOF
       - run: |
           flutter build apk --release \
-            --dart-define=SERVER_URL=${{ inputs.server_url }} \
-            --build-name=${{ inputs.version }}
+            --dart-define=SERVER_URL=${{ env.SERVER_URL }} \
+            --build-name=${{ env.APP_VERSION }}
       - uses: actions/upload-artifact@v4
         with:
-          name: NeoAnt-Android-v${{ inputs.version }}
+          name: NeoAnt-Android-v${{ env.APP_VERSION }}
           path: build/app/outputs/flutter-apk/app-release.apk
           retention-days: 30
 
@@ -60,16 +64,16 @@ jobs:
           flutter pub get
       - run: |
           flutter build ios --release --no-codesign \
-            --dart-define=SERVER_URL=${{ inputs.server_url }} \
-            --build-name=${{ inputs.version }}
+            --dart-define=SERVER_URL=${{ env.SERVER_URL }} \
+            --build-name=${{ env.APP_VERSION }}
       - run: |
           mkdir -p Payload
           cp -r build/ios/iphoneos/Runner.app Payload/
-          zip -r NeoAnt-iOS-v${{ inputs.version }}.ipa Payload/
+          zip -r NeoAnt-iOS-v${{ env.APP_VERSION }}.ipa Payload/
       - uses: actions/upload-artifact@v4
         with:
-          name: NeoAnt-iOS-v${{ inputs.version }}
-          path: NeoAnt-iOS-v${{ inputs.version }}.ipa
+          name: NeoAnt-iOS-v${{ env.APP_VERSION }}
+          path: NeoAnt-iOS-v${{ env.APP_VERSION }}.ipa
           retention-days: 30
 
   windows:
@@ -83,19 +87,21 @@ jobs:
       - run: flutter create --platforms=windows .
       - run: flutter config --enable-windows-desktop
       - run: |
-          flutter build windows --release --dart-define=SERVER_URL=${{ inputs.server_url }} --build-name=${{ inputs.version }}
+          flutter build windows --release --dart-define=SERVER_URL=${{ env.SERVER_URL }} --build-name=${{ env.APP_VERSION }}
       - shell: pwsh
         run: |
+          $ver = "${{ env.APP_VERSION }}"
           Compress-Archive -Path build\windows\x64\runner\Release\* `
-            -DestinationPath NeoAnt-Windows-v${{ inputs.version }}.zip
+            -DestinationPath NeoAnt-Windows-v$ver.zip
       - uses: actions/upload-artifact@v4
         with:
-          name: NeoAnt-Windows-v${{ inputs.version }}
-          path: NeoAnt-Windows-v${{ inputs.version }}.zip
+          name: NeoAnt-Windows-v${{ env.APP_VERSION }}
+          path: NeoAnt-Windows-v${{ env.APP_VERSION }}.zip
           retention-days: 30
       - name: Upload to server
         shell: pwsh
         run: |
+          $ver = "${{ env.APP_VERSION }}"
           $url = "https://dipsin.com/api/upload-artifact"
-          $file = "NeoAnt-Windows-v${{ inputs.version }}.zip"
+          $file = "NeoAnt-Windows-v$ver.zip"
           Invoke-WebRequest -Uri $url -Method Post -InFile $file -ContentType "application/zip" -Headers @{"X-Filename"="$file"} | Select-Object -ExpandProperty Content
