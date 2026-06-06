@@ -17,6 +17,8 @@ jobs:
         with:
           channel: stable
       - run: flutter pub get
+      - name: Add Windows platform
+        run: flutter create --platforms=windows .
       - run: flutter config --enable-windows-desktop
       - name: Build Windows
         shell: powershell
