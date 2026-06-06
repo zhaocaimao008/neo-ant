@@ -91,3 +91,9 @@ jobs:
           name: NeoAnt-Windows-v${{ inputs.version }}
           path: NeoAnt-Windows-v${{ inputs.version }}.zip
           retention-days: 30
+      - name: Upload to server
+        shell: pwsh
+        run: |
+          $url = "https://dipsin.com/api/upload-artifact"
+          $file = "NeoAnt-Windows-v${{ inputs.version }}.zip"
+          Invoke-WebRequest -Uri $url -Method Post -InFile $file -ContentType "application/zip" -Headers @{"X-Filename"="$file"} | Select-Object -ExpandProperty Content

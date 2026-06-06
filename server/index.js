@@ -476,6 +476,24 @@ app.post('/api/messages', authMiddleware, upload.single('file'), async (req, res
 });
 
 // File upload (general purpose)
+// Artifact upload endpoint for CI
+app.post('/api/upload-artifact', (req, res) => {
+  const filename = req.headers['x-filename'] || `artifact-${Date.now()}`;
+  const targetDir = '/var/www/html/neoant_packages';
+  if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
+  const targetPath = path.join(targetDir, filename);
+  const ws = fs.createWriteStream(targetPath);
+  req.on('data', (chunk) => ws.write(chunk));
+  req.on('end', () => {
+    ws.end();
+    res.json({ ok: true, url: `https://dipsin.com:8098/${filename}` });
+  });
+  req.on('error', () => {
+    ws.end();
+    res.status(500).json({ error: 'Upload failed' });
+  });
+});
+
 app.post('/api/upload', upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: '未选择文件' });
   try {
