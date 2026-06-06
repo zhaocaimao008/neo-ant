@@ -44,10 +44,12 @@ class ApiService {
   final StreamController<Map> _messageController = StreamController<Map>.broadcast();
   final StreamController<Map> _callController = StreamController<Map>.broadcast();
   final StreamController<Map> _typingController = StreamController<Map>.broadcast();
+  final StreamController<Map> _contactController = StreamController<Map>.broadcast();
 
   Stream<Map> get messageStream => _messageController.stream;
   Stream<Map> get callStream => _callController.stream;
   Stream<Map> get typingStream => _typingController.stream;
+  Stream<Map> get contactStream => _contactController.stream;
 
   // ─── Auth ────────────────────────────────────────────────────
   Future<Map> login(String username, String password) async {
@@ -299,7 +301,12 @@ class ApiService {
             type == 'call:ice' || type == 'call:end' ||
             type == 'call:busy') {
           _callController.add(parsed);
-        } else if (type == 'message') {
+        } else if (type == 'contact:added') {
+          _contactController.add(parsed);
+        } else if (type == 'message:deleted') {
+          _messageController.add(parsed);
+        } else if (parsed.containsKey('id') && parsed.containsKey('conversation_id')) {
+          // Incoming messages from server have id+conversation_id but type='text'/'image'/etc
           _messageController.add(parsed);
         }
       }, onError: (e) {
@@ -368,6 +375,7 @@ class ApiService {
     _messageController.close();
     _callController.close();
     _typingController.close();
+    _contactController.close();
   }
 
   void logout() {

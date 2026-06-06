@@ -203,19 +203,18 @@ function generateUniqueId() {
     db.prepare("UPDATE id_counter SET next_id = next_id + 1 WHERE name = 'user_uid'").run();
     return row.next_id;
   })();
-  return `A${String(id).padStart(5, '0')}`;
+  return String(id).padStart(7, '0');
 }
 
-// Assign/regenerate unique_id for all users (6-char format)
+// Assign/regenerate unique_id for all users (7-digit format)
 const allUsers = db.prepare('SELECT id FROM users ORDER BY rowid').all();
 for (let i = 0; i < allUsers.length; i++) {
-  const uid = `A${String(i + 1).padStart(5, '0')}`;
+  const uid = String(i + 1).padStart(7, '0');
   db.prepare('UPDATE users SET unique_id = ? WHERE id = ?').run(uid, allUsers[i].id);
 }
-
-// Initialize the atomic counter to the next available ID
-const maxExisting = db.prepare("SELECT COALESCE(MAX(CAST(SUBSTR(unique_id, 2) AS INTEGER)), 0) + 1 AS next_id FROM users").get();
-db.prepare("INSERT OR IGNORE INTO id_counter (name, next_id) VALUES ('user_uid', ?)").run(maxExisting.next_id);
+db.prepare("DELETE FROM id_counter WHERE name = 'user_uid'").run();
+let maxUid = db.prepare('SELECT MAX(CAST(unique_id AS INTEGER)) as m FROM users').get().m || allUsers.length;
+db.prepare("INSERT OR REPLACE INTO id_counter (name, next_id) VALUES ('user_uid', ?)").run(maxUid + 1);
 
 // Ensure notify_preview column exists in user_settings (migration)
 const tableInfo = db.prepare("PRAGMA table_info('user_settings')").all();
@@ -465,6 +464,14 @@ app.post('/api/messages', authMiddleware, upload.single('file'), async (req, res
     FROM messages m JOIN users u ON u.id = m.sender_id
     WHERE m.id = ?
   `).get(id);
+  // Broadcast to all conversation members via WebSocket
+  if (msg) {
+    const members = db.prepare('SELECT user_id FROM conversation_members WHERE conversation_id = ?').all(conversation_id);
+    for (const m of members) {
+      const clients = wsClients.get(m.user_id);
+      if (clients) clients.forEach(c => { try { c.send(JSON.stringify(msg)); } catch {} });
+    }
+  }
   res.json(msg);
 });
 
@@ -501,9 +508,16 @@ app.post('/api/contacts/add', authMiddleware, (req, res) => {
     contact = db.prepare('SELECT id FROM users WHERE phone = ?').get(contactPhone);
   }
   if (!contact) return res.status(404).json({ error: '用户不存在' });
+  const contactUser = db.prepare('SELECT id, name FROM users WHERE id = ?').get(contact.id);
   try {
     db.prepare('INSERT INTO contacts (user_id, contact_id, remark) VALUES (?, ?, ?)').run(userId, contact.id, remark || '');
     db.prepare('INSERT INTO contacts (user_id, contact_id) VALUES (?, ?)').run(contact.id, userId);
+    // Notify via WebSocket
+    const requester = db.prepare('SELECT name FROM users WHERE id = ?').get(userId);
+    const clients = wsClients.get(contact.id);
+    if (clients) {
+      clients.forEach(c => { try { c.send(JSON.stringify({ type: 'contact:added', from_id: userId, from_name: requester?.name || '' })); } catch {} });
+    }
     res.json({ ok: true });
   } catch { res.status(400).json({ error: '已经是好友了' }); }
 });
@@ -558,11 +572,10 @@ app.post('/api/invite/generate', authMiddleware, (req, res) => {
 
   const num = Math.min(count || 1, 100);
   const codes = [];
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   for (let i = 0; i < num; i++) {
     let code;
     do {
-      code = Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+      code = String(Math.floor(100000 + Math.random() * 900000));
     } while (db.prepare('SELECT id FROM invite_codes WHERE code = ?').get(code));
     const id = uuidv4();
     db.prepare('INSERT INTO invite_codes (id, code, created_by) VALUES (?, ?, ?)').run(id, code, userId);

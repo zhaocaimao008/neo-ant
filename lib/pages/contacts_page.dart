@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../models/mock_data.dart';
 import '../widgets/ant_avatar.dart';
@@ -20,18 +21,24 @@ class _ContactsPageState extends State<ContactsPage> {
   List<Map<String, dynamic>> _contacts = [];
   List<Map<String, dynamic>> _filteredContacts = [];
   bool _loading = true;
+  StreamSubscription<Map>? _contactSub;
 
   @override
   void initState() {
     super.initState();
     _loadContacts();
     _searchCtrl.addListener(_filterContacts);
+    // Listen for contact:added events via WebSocket
+    _contactSub = ApiService().contactStream.listen((_) {
+      _loadContacts();
+    });
   }
 
   @override
   void dispose() {
     _searchCtrl.removeListener(_filterContacts);
     _searchCtrl.dispose();
+    _contactSub?.cancel();
     super.dispose();
   }
 
