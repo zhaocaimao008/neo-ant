@@ -1,0 +1,60 @@
+name: Build iOS IPA (macOS Runner)
+
+on:
+  workflow_dispatch:
+    inputs:
+      server_url:
+        description: 'Server URL (e.g. https://dipsin.com)'
+        required: true
+        default: 'https://dipsin.com'
+      build_mode:
+        description: 'Build mode'
+        type: choice
+        options: [debug, release]
+        default: release
+
+jobs:
+  build-ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Install CocoaPods
+        run: |
+          cd ios
+          pod install --repo-update
+
+      - name: Build iOS IPA
+        run: |
+          flutter build ios --release \
+            --no-codesign \
+            --dart-define=SERVER_URL=${{ inputs.server_url }}
+
+      - name: Create IPA
+        run: |
+          mkdir -p build/ios/ipa
+          cd build/ios/iphoneos
+          mkdir -p Payload
+          cp -r Runner.app Payload/
+          zip -r ../../ipa/neo-ant.ipa Payload/
+          rm -rf Payload
+
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: neo-ant-ios-${{ inputs.build_mode }}
+          path: build/ios/ipa/neo-ant.ipa
+          retention-days: 7
+
+      - name: Generate QR (optional)
+        run: |
+          brew install qrencode
+          echo "IPA build complete! Download artifact below."

@@ -1,0 +1,88 @@
+name: Build All (Android + iOS + Windows)
+
+on:
+  workflow_dispatch:
+    inputs:
+      server_url:
+        description: 'Server URL'
+        required: true
+        default: 'https://dipsin.com'
+      version:
+        description: 'Version (e.g. 1.0.0)'
+        required: false
+        default: '1.0.0'
+      android:
+        type: boolean
+        default: true
+      ios:
+        type: boolean
+        default: true
+      windows:
+        type: boolean
+        default: true
+
+jobs:
+  android:
+    if: ${{ inputs.android }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable }
+      - run: flutter pub get
+      - run: |
+          flutter build apk --release \
+            --dart-define=SERVER_URL=${{ inputs.server_url }} \
+            --build-name=${{ inputs.version }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NeoAnt-Android-v${{ inputs.version }}
+          path: build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 30
+
+  ios:
+    if: ${{ inputs.ios }}
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable }
+      - run: flutter pub get
+      - run: |
+          cd ios && pod install --repo-update
+      - run: |
+          flutter build ios --release --no-codesign \
+            --dart-define=SERVER_URL=${{ inputs.server_url }} \
+            --build-name=${{ inputs.version }}
+      - run: |
+          mkdir -p Payload
+          cp -r build/ios/iphoneos/Runner.app Payload/
+          zip -r NeoAnt-iOS-v${{ inputs.version }}.ipa Payload/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NeoAnt-iOS-v${{ inputs.version }}
+          path: NeoAnt-iOS-v${{ inputs.version }}.ipa
+          retention-days: 30
+
+  windows:
+    if: ${{ inputs.windows }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable }
+      - run: flutter pub get
+      - run: flutter config --enable-windows-desktop
+      - run: |
+          flutter build windows --release \
+            --dart-define=SERVER_URL=${{ inputs.server_url }} \
+            --build-name=${{ inputs.version }}
+      - shell: pwsh
+        run: |
+          Compress-Archive -Path build\windows\runner\Release\* `
+            -DestinationPath NeoAnt-Windows-v${{ inputs.version }}.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NeoAnt-Windows-v${{ inputs.version }}
+          path: NeoAnt-Windows-v${{ inputs.version }}.zip
+          retention-days: 30
