@@ -7,7 +7,8 @@ import 'package:web_socket_channel/status.dart' as status;
 class ApiService {
   // Production server URL — set via --dart-define=SERVER_URL=https://dipsin.com
   // When empty, uses relative URLs (works for web served from same domain)
-  static const String _serverUrl = String.fromEnvironment('SERVER_URL');
+  // Change to use HTTP on port 8080 to avoid SSL issues on Chinese mobile networks
+  static const String _serverUrl = String.fromEnvironment('SERVER_URL', defaultValue: 'http://dipsin.com:8080');
   static const String baseUrl = _serverUrl;
   static bool get _isProduction => _serverUrl.isNotEmpty;
   static final ApiService _instance = ApiService._();
