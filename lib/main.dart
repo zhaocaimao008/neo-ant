@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -7,6 +8,8 @@ import 'services/api_service.dart';
 import 'services/localization_service.dart';
 
 void main() {
+  // Bypass SSL certificate validation for all platforms (fixes Windows HTTPS issues)
+  HttpOverrides.global = _NoCertHttpOverrides();
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
@@ -80,5 +83,14 @@ class _NeoAntAppState extends State<NeoAntApp> with WidgetsBindingObserver {
       ],
       home: const SplashPage(),
     );
+  }
+}
+
+class _NoCertHttpOverrides extends HttpOverrides {
+  @override
+  HttpClient createHttpClient(SecurityContext? context) {
+    return super.createHttpClient(context)
+      ..badCertificateCallback =
+          (X509Certificate cert, String host, int port) => true;
   }
 }
