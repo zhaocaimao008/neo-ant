@@ -51,13 +51,11 @@ jobs:
         with:
           channel: stable
       - run: flutter pub get
-      - name: Recreate iOS platform (force Podfile generation)
+      - name: Recreate iOS platform
         run: |
           rm -rf ios
           flutter create --platforms=ios .
           flutter pub get
-      - run: |
-          cd ios && pod install --repo-update
       - run: |
           flutter build ios --release --no-codesign \
             --dart-define=SERVER_URL=${{ inputs.server_url }} \
