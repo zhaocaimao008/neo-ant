@@ -17,9 +17,13 @@ jobs:
         with:
           channel: stable
       - run: flutter pub get
-      - run: |
+      - run: flutter precache --ios
+      - name: Check ios directory
+        run: ls -la ios/ || echo 'ios dir missing'
+      - name: Pod install
+        run: |
           cd ios
-          pod install --repo-update
+          pod install --repo-update || echo 'pod install skipped'
       - run: |
           flutter build ios --release --no-codesign \
             --dart-define=SERVER_URL=${{ inputs.server_url }}

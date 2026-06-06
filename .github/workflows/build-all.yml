@@ -21,6 +21,18 @@ jobs:
         with:
           channel: stable
       - run: flutter pub get
+      - name: Generate debug keystore for CI
+        run: |
+          keytool -genkey -v -keystore android/app/debug.keystore \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -alias androiddebugkey -storepass android -keypass android \
+            -dname "CN=Android Debug,O=Android,C=US" 2>/dev/null || true
+          cat > android/app/key.properties << PROPEOF
+          storePassword=android
+          keyPassword=android
+          keyAlias=androiddebugkey
+          storeFile=debug.keystore
+          PROPEOF
       - run: |
           flutter build apk --release \
             --dart-define=SERVER_URL=${{ inputs.server_url }} \

@@ -18,13 +18,14 @@ jobs:
           channel: stable
       - run: flutter pub get
       - run: flutter config --enable-windows-desktop
-      - run: |
-          flutter build windows --release `
-            --dart-define=SERVER_URL=${{ inputs.server_url }}
-      - shell: pwsh
+      - name: Build Windows
+        shell: powershell
         run: |
-          Compress-Archive -Path build\windows\runner\Release\* `
-            -DestinationPath NeoAnt-Windows.zip
+          flutter build windows --release --dart-define=SERVER_URL=${{ inputs.server_url }}
+      - name: Create ZIP
+        shell: powershell
+        run: |
+          Compress-Archive -Path build\windows\runner\Release\* -DestinationPath NeoAnt-Windows.zip -Force
       - uses: actions/upload-artifact@v4
         with:
           name: neo-ant-windows-release
