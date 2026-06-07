@@ -1,0 +1,1038 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NeoAnt 管理后台</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #0f0f14;
+    color: #e0e0e8;
+    min-height: 100vh;
+  }
+  a { color: #6c8cff; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* Login */
+  .login-page {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 100vh; padding: 20px;
+  }
+  .login-card {
+    background: #1a1a24; border-radius: 16px; padding: 40px;
+    width: 100%; max-width: 400px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  .login-card h1 {
+    text-align: center; margin-bottom: 8px; font-size: 24px;
+    background: linear-gradient(135deg, #6c8cff, #a78bfa);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .login-card .subtitle {
+    text-align: center; color: #888; margin-bottom: 32px; font-size: 14px;
+  }
+  .login-card .error {
+    background: rgba(239,68,68,0.15); color: #ef4444;
+    padding: 10px 16px; border-radius: 8px; margin-bottom: 16px;
+    font-size: 13px; display: none;
+  }
+  .login-card .success {
+    background: rgba(34,197,94,0.15); color: #22c55e;
+    padding: 10px 16px; border-radius: 8px; margin-bottom: 16px;
+    font-size: 13px; display: none;
+  }
+
+  /* Layout */
+  .app-container { display: none; }
+  .sidebar {
+    position: fixed; left: 0; top: 0; bottom: 0; width: 220px;
+    background: #14141e; border-right: 1px solid #2a2a3a;
+    padding: 20px 0; z-index: 100; overflow-y: auto;
+  }
+  .sidebar .brand {
+    padding: 0 20px 20px; font-size: 18px; font-weight: 700;
+    background: linear-gradient(135deg, #6c8cff, #a78bfa);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    border-bottom: 1px solid #2a2a3a; margin-bottom: 12px;
+  }
+  .sidebar .nav-item {
+    display: block; padding: 10px 20px; cursor: pointer;
+    color: #888; font-size: 14px; transition: all 0.2s;
+    border-left: 3px solid transparent;
+  }
+  .sidebar .nav-item:hover { color: #e0e0e8; background: #1a1a28; }
+  .sidebar .nav-item.active { color: #6c8cff; border-left-color: #6c8cff; background: rgba(108,140,255,0.08); }
+  .sidebar .nav-item .icon { margin-right: 8px; }
+
+  .main-content {
+    margin-left: 220px; padding: 24px 32px; min-height: 100vh;
+  }
+  .page { display: none; }
+  .page.active { display: block; }
+
+  h2 { font-size: 22px; margin-bottom: 24px; }
+  h3 { font-size: 16px; margin-bottom: 16px; color: #aaa; }
+
+  /* Stats cards */
+  .stats-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px; margin-bottom: 32px;
+  }
+  .stat-card {
+    background: #1a1a24; border-radius: 12px; padding: 24px;
+    border: 1px solid #2a2a3a; transition: border-color 0.2s;
+  }
+  .stat-card:hover { border-color: #6c8cff; }
+  .stat-card .number { font-size: 32px; font-weight: 700; color: #fff; }
+  .stat-card .label { font-size: 13px; color: #888; margin-top: 4px; }
+
+  /* Forms */
+  .form-group { margin-bottom: 16px; }
+  .form-group label { display: block; font-size: 13px; color: #aaa; margin-bottom: 6px; }
+  .form-group input, .form-group select, .form-group textarea {
+    width: 100%; padding: 10px 14px; background: #1a1a24;
+    border: 1px solid #333; border-radius: 8px; color: #e0e0e8;
+    font-size: 14px; transition: border-color 0.2s; outline: none;
+  }
+  .form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: #6c8cff; }
+  .form-group input::placeholder { color: #555; }
+  .form-group select { cursor: pointer; }
+  .form-group textarea { resize: vertical; min-height: 60px; }
+  .form-inline { display: flex; align-items: center; gap: 8px; }
+  .form-inline .form-group { margin-bottom: 0; }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 10px 20px; border: none; border-radius: 8px;
+    font-size: 14px; cursor: pointer; transition: all 0.2s;
+    font-weight: 500;
+  }
+  .btn-primary { background: #6c8cff; color: #fff; }
+  .btn-primary:hover { background: #5a7ae8; }
+  .btn-danger { background: #ef4444; color: #fff; }
+  .btn-danger:hover { background: #dc2626; }
+  .btn-success { background: #22c55e; color: #fff; }
+  .btn-success:hover { background: #16a34a; }
+  .btn-warning { background: #f59e0b; color: #fff; }
+  .btn-warning:hover { background: #d97706; }
+  .btn-secondary { background: #2a2a3a; color: #e0e0e8; }
+  .btn-secondary:hover { background: #33334a; }
+  .btn-sm { padding: 6px 12px; font-size: 12px; }
+  .btn-block { width: 100%; justify-content: center; }
+
+  /* Table */
+  .table-wrap {
+    background: #1a1a24; border-radius: 12px; border: 1px solid #2a2a3a;
+    overflow-x: auto; margin-bottom: 24px;
+  }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: 12px 16px; text-align: left; font-size: 13px; }
+  th { background: #14141e; color: #888; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #2a2a3a; }
+  td { border-bottom: 1px solid #222; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(108,140,255,0.03); }
+
+  /* Badges */
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 4px;
+    font-size: 11px; font-weight: 600;
+  }
+  .badge-admin { background: rgba(108,140,255,0.2); color: #6c8cff; }
+  .badge-user { background: rgba(34,197,94,0.15); color: #22c55e; }
+  .badge-banned { background: rgba(239,68,68,0.2); color: #ef4444; }
+
+  /* Toolbar */
+  .toolbar {
+    display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap;
+  }
+  .toolbar .spacer { flex: 1; }
+
+  /* Modal overlay */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+    z-index: 1000; align-items: center; justify-content: center; padding: 20px;
+  }
+  .modal-overlay.show { display: flex; }
+  .modal {
+    background: #1a1a24; border-radius: 16px; padding: 28px;
+    width: 100%; max-width: 480px; border: 1px solid #2a2a3a;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.5);
+  }
+  .modal h3 { margin-bottom: 20px; }
+  .modal .actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+
+  /* Toast */
+  .toast {
+    position: fixed; top: 20px; right: 20px; z-index: 2000;
+    padding: 12px 20px; border-radius: 8px; font-size: 13px;
+    display: none; max-width: 360px; box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  }
+  .toast.show { display: block; }
+  .toast-success { background: #22c55e; color: #fff; }
+  .toast-error { background: #ef4444; color: #fff; }
+
+  /* Loading */
+  .loading {
+    text-align: center; padding: 40px; color: #666;
+  }
+  .loading::after {
+    content: ''; display: inline-block; width: 20px; height: 20px;
+    border: 2px solid #333; border-top-color: #6c8cff;
+    border-radius: 50%; animation: spin 0.8s linear infinite;
+    margin-left: 8px; vertical-align: middle;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Empty state */
+  .empty-state { text-align: center; padding: 40px; color: #666; font-size: 14px; }
+
+  /* QR Code */
+  .qr-container {
+    text-align: center; margin: 20px 0;
+  }
+  .qr-container img {
+    max-width: 200px; border-radius: 8px;
+  }
+  .secret-display {
+    background: #14141e; padding: 12px 16px; border-radius: 8px;
+    font-family: monospace; font-size: 13px; text-align: center;
+    margin: 12px 0; word-break: break-all;
+  }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    .sidebar { width: 60px; }
+    .sidebar .brand { font-size: 0; padding: 12px; text-align: center; }
+    .sidebar .brand::first-letter { font-size: 18px; -webkit-text-fill-color: #6c8cff; }
+    .sidebar .nav-item { padding: 12px; text-align: center; font-size: 0; }
+    .sidebar .nav-item .icon { margin-right: 0; font-size: 16px; }
+    .main-content { margin-left: 60px; padding: 16px; }
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    td, th { padding: 8px 10px; font-size: 12px; }
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #555; }
+</style>
+</head>
+<body>
+
+<div class="login-page" id="loginPage">
+  <div class="login-card">
+    <h1>NeoAnt</h1>
+    <p class="subtitle">管理后台 · 请登录</p>
+    <div class="error" id="loginError"></div>
+    <div class="form-group">
+      <input type="text" id="loginUser" placeholder="用户名" value="admin">
+    </div>
+    <div class="form-group">
+      <input type="password" id="loginPass" placeholder="密码" value="admin123">
+    </div>
+    <!-- 2FA input (hidden initially) -->
+    <div class="form-group" id="totpInputGroup" style="display:none;">
+      <label>Google Authenticator 验证码</label>
+      <input type="text" id="loginTotp" placeholder="输入6位验证码" maxlength="6">
+    </div>
+    <button class="btn btn-primary btn-block" id="loginBtn" onclick="login()">登 录</button>
+    <p style="text-align:center;margin-top:16px;font-size:12px;color:#555;">默认账号 admin / admin123</p>
+  </div>
+</div>
+
+<div class="app-container" id="app">
+  <aside class="sidebar">
+    <div class="brand">NeoAnt Admin</div>
+    <div class="nav-item active" onclick="showPage('dashboard')">
+      <span class="icon">📊</span> 概览
+    </div>
+    <div class="nav-item" onclick="showPage('users')">
+      <span class="icon">👥</span> 用户管理
+    </div>
+    <div class="nav-item" onclick="showPage('invites')">
+      <span class="icon">🔑</span> 邀请码
+    </div>
+    <div class="nav-item" onclick="showPage('block')">
+      <span class="icon">🚫</span> 封禁管理
+    </div>
+    <div class="nav-item" onclick="showPage('twofa')">
+      <span class="icon">🔐</span> 两步验证
+    </div>
+    <div style="position:absolute;bottom:20px;left:0;right:0;padding:0 20px;">
+      <div class="nav-item" onclick="logout()" style="color:#ef4444;border-left-color:transparent;">
+        <span class="icon">🚪</span> 退出
+      </div>
+    </div>
+  </aside>
+
+  <div class="main-content">
+    <!-- Dashboard -->
+    <div class="page active" id="pageDashboard">
+      <h2>📊 系统概览</h2>
+      <div class="stats-grid" id="statsGrid">
+        <div class="stat-card"><div class="number" id="statUsers">-</div><div class="label">总用户数</div></div>
+        <div class="stat-card"><div class="number" id="statMessages">-</div><div class="label">总消息数</div></div>
+        <div class="stat-card"><div class="number" id="statConversations">-</div><div class="label">总对话数</div></div>
+        <div class="stat-card"><div class="number" id="statInvites">-</div><div class="label">邀请码总数</div></div>
+      </div>
+    </div>
+
+    <!-- Users -->
+    <div class="page" id="pageUsers">
+      <div class="toolbar">
+        <h2 style="margin:0;">👥 用户管理</h2>
+        <div class="spacer"></div>
+        <input type="text" id="userSearch" placeholder="搜索用户名..." style="padding:8px 12px;background:#1a1a24;border:1px solid #333;border-radius:8px;color:#e0e0e8;font-size:13px;outline:none;" oninput="filterUsers()">
+      </div>
+      <div id="usersTableWrap" class="table-wrap">
+        <div class="loading">加载中</div>
+      </div>
+    </div>
+
+    <!-- Invites -->
+    <div class="page" id="pageInvites">
+      <div class="toolbar">
+        <h2 style="margin:0;">🔑 邀请码管理</h2>
+        <div class="spacer"></div>
+        <div class="form-group" style="margin:0;display:flex;align-items:center;gap:8px;">
+          <input type="number" id="inviteCount" value="1" min="1" max="100" style="width:80px;padding:8px 12px;background:#1a1a24;border:1px solid #333;border-radius:8px;color:#e0e0e8;font-size:13px;outline:none;text-align:center;">
+          <button class="btn btn-success btn-sm" onclick="generateInvites()">批量生成</button>
+        </div>
+      </div>
+      <div class="toolbar" style="margin-top:-8px;">
+        <div class="form-inline">
+          <div class="form-group" style="margin:0;">
+            <select id="inviteTargetUser" style="width:200px;padding:8px 12px;background:#1a1a24;border:1px solid #333;border-radius:8px;color:#e0e0e8;font-size:13px;outline:none;">
+              <option value="">-- 为用户生成 --</option>
+            </select>
+          </div>
+          <input type="number" id="inviteForCount" value="1" min="1" max="100" style="width:80px;padding:8px 12px;background:#1a1a24;border:1px solid #333;border-radius:8px;color:#e0e0e8;font-size:13px;outline:none;text-align:center;">
+          <button class="btn btn-primary btn-sm" onclick="generateInvitesFor()">为用户生成</button>
+        </div>
+      </div>
+      <div id="invitesTableWrap" class="table-wrap">
+        <div class="loading">加载中</div>
+      </div>
+    </div>
+
+    <!-- Block Management (IP + Device) -->
+    <div class="page" id="pageBlock">
+      <h2>🚫 封禁管理</h2>
+
+      <h3>IP 封禁</h3>
+      <div class="toolbar">
+        <div class="form-inline">
+          <div class="form-group" style="margin:0;">
+            <input type="text" id="blockIpInput" placeholder="IP地址" style="width:180px;padding:8px 12px;background:#1a1a24;border:1px solid #333;border-radius:8px;color:#e0e0e8;font-size:13px;outline:none;">
+          </div>
+          <div class="form-group" style="margin:0;">
+            <input type="text" id="blockIpReason" placeholder="封禁原因" style="width:200px;padding:8px 12px;background:#1a1a24;border:1px solid #333;border-radius:8px;color:#e0e0e8;font-size:13px;outline:none;">
+          </div>
+          <button class="btn btn-danger btn-sm" onclick="blockIp()">封禁IP</button>
+        </div>
+      </div>
+      <div id="blockedIpsTableWrap" class="table-wrap">
+        <div class="loading">加载中</div>
+      </div>
+
+      <h3 style="margin-top:32px;">设备封禁</h3>
+      <div class="toolbar">
+        <div class="form-inline">
+          <div class="form-group" style="margin:0;">
+            <input type="text" id="blockDeviceInput" placeholder="设备ID" style="width:180px;padding:8px 12px;background:#1a1a24;border:1px solid #333;border-radius:8px;color:#e0e0e8;font-size:13px;outline:none;">
+          </div>
+          <div class="form-group" style="margin:0;">
+            <input type="text" id="blockDeviceReason" placeholder="封禁原因" style="width:200px;padding:8px 12px;background:#1a1a24;border:1px solid #333;border-radius:8px;color:#e0e0e8;font-size:13px;outline:none;">
+          </div>
+          <button class="btn btn-danger btn-sm" onclick="blockDevice()">封禁设备</button>
+        </div>
+      </div>
+      <div id="blockedDevicesTableWrap" class="table-wrap">
+        <div class="loading">加载中</div>
+      </div>
+    </div>
+
+    <!-- 2FA -->
+    <div class="page" id="pageTwofa">
+      <h2>🔐 两步验证 (2FA)</h2>
+      <div id="twofaContent" style="background:#1a1a24;border-radius:12px;border:1px solid #2a2a3a;padding:28px;max-width:500px;">
+        <div class="loading" id="twofaLoading">检查状态...</div>
+        <div id="twofaSetup" style="display:none;">
+          <p style="color:#aaa;font-size:14px;margin-bottom:20px;">
+            使用 Google Authenticator 或类似应用扫描二维码，然后输入验证码完成绑定。
+          </p>
+          <div id="twofaQrContainer" class="qr-container"></div>
+          <div id="twofaSecretDisplay" class="secret-display"></div>
+          <div class="form-group">
+            <label>输入验证码完成激活</label>
+            <input type="text" id="twofaToken" placeholder="6位验证码" maxlength="6">
+          </div>
+          <div class="actions" style="display:flex;gap:10px;justify-content:flex-end;">
+            <button class="btn btn-primary" onclick="verifyTwofa()">验证并启用</button>
+            <button class="btn btn-secondary" onclick="cancelTwofaSetup()">取消</button>
+          </div>
+        </div>
+        <div id="twofaEnabled" style="display:none;">
+          <div style="text-align:center;padding:20px 0;">
+            <div style="font-size:48px;margin-bottom:12px;">✅</div>
+            <p style="color:#22c55e;font-size:16px;font-weight:600;">两步验证已启用</p>
+            <p style="color:#888;font-size:13px;margin-top:8px;">登录管理员账号时需额外输入验证码</p>
+          </div>
+          <div class="actions" style="display:flex;gap:10px;justify-content:center;margin-top:20px;">
+            <button class="btn btn-danger" onclick="disableTwofa()">禁用两步验证</button>
+          </div>
+        </div>
+        <div id="twofaDisabled" style="display:none;text-align:center;padding:20px 0;">
+          <div style="font-size:48px;margin-bottom:12px;">🔓</div>
+          <p style="color:#aaa;font-size:14px;margin-bottom:20px;">当前未启用两步验证</p>
+          <button class="btn btn-primary" onclick="setupTwofa()">启用两步验证</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Confirm Modal -->
+<div class="modal-overlay" id="confirmModal">
+  <div class="modal">
+    <h3 id="confirmTitle">确认操作</h3>
+    <p id="confirmMsg" style="color:#aaa;font-size:14px;"></p>
+    <div class="actions">
+      <button class="btn btn-secondary" onclick="closeConfirm()">取消</button>
+      <button class="btn btn-danger" id="confirmBtn" onclick="confirmAction()">确认</button>
+    </div>
+  </div>
+</div>
+
+<!-- Input Modal -->
+<div class="modal-overlay" id="inputModal">
+  <div class="modal">
+    <h3 id="inputTitle">输入</h3>
+    <div class="form-group">
+      <input type="text" id="inputModalField" placeholder="">
+    </div>
+    <div class="actions">
+      <button class="btn btn-secondary" onclick="closeInputModal()">取消</button>
+      <button class="btn btn-primary" id="inputModalBtn" onclick="confirmInputModal()">确认</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ─── State ───────────────────────────────────────────
+let token = localStorage.getItem('neoant_admin_token') || '';
+let pendingLoginTempToken = null;
+let confirmCallback = null;
+let inputModalCallback = null;
+
+// ─── API Helper ──────────────────────────────────────
+async function api(path, options = {}) {
+  const headers = { ...options.headers };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  if (options.body) {
+    headers['Content-Type'] = 'application/json';
+  }
+  const res = await fetch(path, { ...options, headers });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || '请求失败');
+  return data;
+}
+
+// ─── Toast ───────────────────────────────────────────
+function showToast(msg, type = 'success') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast toast-' + type + ' show';
+  setTimeout(() => { t.classList.remove('show'); }, 3000);
+}
+
+// ─── Confirm Modal ───────────────────────────────────
+function showConfirm(title, msg, callback) {
+  document.getElementById('confirmTitle').textContent = title;
+  document.getElementById('confirmMsg').textContent = msg;
+  document.getElementById('confirmModal').classList.add('show');
+  confirmCallback = callback;
+}
+function closeConfirm() {
+  document.getElementById('confirmModal').classList.remove('show');
+  confirmCallback = null;
+}
+function confirmAction() {
+  if (confirmCallback) confirmCallback();
+  closeConfirm();
+}
+
+// ─── Input Modal ─────────────────────────────────────
+function showInputModal(title, placeholder, callback) {
+  document.getElementById('inputTitle').textContent = title;
+  document.getElementById('inputModalField').value = '';
+  document.getElementById('inputModalField').placeholder = placeholder || '';
+  document.getElementById('inputModal').classList.add('show');
+  inputModalCallback = callback;
+}
+function closeInputModal() {
+  document.getElementById('inputModal').classList.remove('show');
+  inputModalCallback = null;
+}
+function confirmInputModal() {
+  const val = document.getElementById('inputModalField').value.trim();
+  if (inputModalCallback) inputModalCallback(val);
+  closeInputModal();
+}
+// Enter key on input modal
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && document.getElementById('inputModal').classList.contains('show')) {
+    confirmInputModal();
+  }
+});
+
+// ─── Login ───────────────────────────────────────────
+async function login() {
+  const username = document.getElementById('loginUser').value.trim();
+  const password = document.getElementById('loginPass').value.trim();
+  const errEl = document.getElementById('loginError');
+  errEl.style.display = 'none';
+
+  if (!username || !password) {
+    errEl.textContent = '请输入用户名和密码';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  // If we're in 2FA step, complete the 2FA verification
+  if (pendingLoginTempToken) {
+    const totpToken = document.getElementById('loginTotp').value.trim();
+    if (!totpToken || totpToken.length !== 6) {
+      errEl.textContent = '请输入6位验证码';
+      errEl.style.display = 'block';
+      return;
+    }
+    try {
+      const data = await api('/api/auth/2fa/verify', {
+        method: 'POST',
+        body: JSON.stringify({ tempToken: pendingLoginTempToken, totpToken })
+      });
+      pendingLoginTempToken = null;
+      token = data.token;
+      localStorage.setItem('neoant_admin_token', token);
+      document.getElementById('loginPage').style.display = 'none';
+      document.getElementById('app').style.display = 'flex';
+      loadDashboard();
+    } catch (e) {
+      errEl.textContent = e.message || '验证失败';
+      errEl.style.display = 'block';
+    }
+    return;
+  }
+
+  try {
+    const data = await api('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password })
+    });
+
+    // Check if 2FA is required
+    if (data.requires2fa) {
+      pendingLoginTempToken = data.tempToken;
+      document.getElementById('totpInputGroup').style.display = 'block';
+      document.getElementById('loginBtn').textContent = '验证 2FA';
+      document.getElementById('loginUser').disabled = true;
+      document.getElementById('loginPass').disabled = true;
+      document.getElementById('loginTotp').focus();
+      return;
+    }
+
+    if (data.user && data.user.role !== 'admin') {
+      errEl.textContent = '此账号无管理员权限';
+      errEl.style.display = 'block';
+      return;
+    }
+
+    token = data.token;
+    localStorage.setItem('neoant_admin_token', token);
+    document.getElementById('loginPage').style.display = 'none';
+    document.getElementById('app').style.display = 'flex';
+    loadDashboard();
+  } catch (e) {
+    errEl.textContent = e.message || '登录失败';
+    errEl.style.display = 'block';
+  }
+}
+
+// ─── Logout ──────────────────────────────────────────
+function logout() {
+  token = '';
+  pendingLoginTempToken = null;
+  localStorage.removeItem('neoant_admin_token');
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('loginPage').style.display = 'flex';
+  document.getElementById('totpInputGroup').style.display = 'none';
+  document.getElementById('loginBtn').textContent = '登 录';
+  document.getElementById('loginUser').disabled = false;
+  document.getElementById('loginPass').disabled = false;
+}
+
+// ─── Page Switching ──────────────────────────────────
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const pageId = 'page' + name.charAt(0).toUpperCase() + name.slice(1);
+  const el = document.getElementById(pageId);
+  if (el) el.classList.add('active');
+
+  // Highlight nav
+  const navMap = { dashboard: '概览', users: '用户', invites: '邀请码', block: '封禁', twofa: '验证' };
+  document.querySelectorAll('.nav-item').forEach(n => {
+    if (n.textContent.includes(navMap[name] || name)) {
+      n.classList.add('active');
+    }
+  });
+
+  if (name === 'dashboard') loadDashboard();
+  else if (name === 'users') loadUsers();
+  else if (name === 'invites') { loadInvites(); loadInviteUserSelect(); }
+  else if (name === 'block') { loadBlockedIps(); loadBlockedDevices(); }
+  else if (name === 'twofa') loadTwofaStatus();
+}
+
+// ─── Dashboard ───────────────────────────────────────
+async function loadDashboard() {
+  try {
+    const stats = await api('/api/admin/stats');
+    document.getElementById('statUsers').textContent = stats.total_users;
+    document.getElementById('statMessages').textContent = stats.total_messages;
+    document.getElementById('statConversations').textContent = stats.total_conversations;
+    document.getElementById('statInvites').textContent = stats.total_invite_codes;
+  } catch (e) {
+    showToast('加载统计数据失败: ' + e.message, 'error');
+  }
+}
+
+// ─── Users ───────────────────────────────────────────
+let allUsers = [];
+
+async function loadUsers() {
+  document.getElementById('usersTableWrap').innerHTML = '<div class="loading">加载中</div>';
+  try {
+    allUsers = await api('/api/admin/users');
+    renderUsers();
+  } catch (e) {
+    document.getElementById('usersTableWrap').innerHTML = '<div class="empty-state">加载失败: ' + e.message + '</div>';
+  }
+}
+
+function renderUsers(filter = '') {
+  const wrap = document.getElementById('usersTableWrap');
+  let list = allUsers;
+  if (filter) {
+    const q = filter.toLowerCase();
+    list = list.filter(u => (u.username && u.username.toLowerCase().includes(q)) ||
+                           (u.name && u.name.toLowerCase().includes(q)) ||
+                           (u.phone && u.phone.includes(q)));
+  }
+  if (list.length === 0) {
+    wrap.innerHTML = '<div class="empty-state">暂无用户</div>';
+    return;
+  }
+  let html = `<table>
+    <thead><tr>
+      <th>ID</th><th>用户名</th><th>昵称</th><th>手机</th><th>角色</th><th>状态</th><th>封禁</th><th>创建时间</th><th>操作</th>
+    </tr></thead><tbody>`;
+  for (const u of list) {
+    const isBanned = u.banned === 1;
+    html += `<tr>
+      <td style="font-family:monospace;font-size:11px;color:#888;">${(u.unique_id || u.id).substring(0, 8)}</td>
+      <td>${u.username || '-'}</td>
+      <td>${u.name || '-'}</td>
+      <td>${u.phone || '-'}</td>
+      <td><span class="badge ${u.role === 'admin' ? 'badge-admin' : 'badge-user'}">${u.role === 'admin' ? '管理员' : '用户'}</span></td>
+      <td>${u.status || '-'}</td>
+      <td>${isBanned ? '<span class="badge badge-banned">已封禁</span>' : '<span style="color:#22c55e;font-size:11px;">正常</span>'}</td>
+      <td style="font-size:11px;color:#888;">${u.created_at ? u.created_at.substring(0, 16) : '-'}</td>
+      <td>
+        ${u.role !== 'admin' ? `<button class="btn btn-danger btn-sm" onclick="deleteUser('${u.id}','${u.name || u.username}')">删除</button>` :
+          '<span style="color:#666;font-size:11px;">-</span>'}
+        ${isBanned
+          ? `<button class="btn btn-success btn-sm" onclick="unbanUser('${u.id}','${u.name || u.username}')">解封</button>`
+          : `<button class="btn btn-warning btn-sm" onclick="banUser('${u.id}','${u.name || u.username}')">封禁</button>`}
+      </td>
+    </tr>`;
+  }
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+function filterUsers() {
+  renderUsers(document.getElementById('userSearch').value);
+}
+
+async function deleteUser(id, name) {
+  showConfirm('删除用户', `确定要删除用户「${name}」吗？此操作不可恢复。`, async () => {
+    try {
+      await api('/api/admin/users/' + id, { method: 'DELETE' });
+      showToast('用户已删除');
+      loadUsers();
+      loadDashboard();
+    } catch (e) {
+      showToast('删除失败: ' + e.message, 'error');
+    }
+  });
+}
+
+async function banUser(id, name) {
+  showConfirm('封禁用户', `确定要封禁用户「${name}」吗？封禁后该用户将无法登录。`, async () => {
+    try {
+      await api('/api/admin/users/' + id + '/ban', {
+        method: 'POST',
+        body: JSON.stringify({ reason: '管理员封禁' })
+      });
+      showToast('用户已封禁');
+      loadUsers();
+    } catch (e) {
+      showToast('封禁失败: ' + e.message, 'error');
+    }
+  });
+}
+
+async function unbanUser(id, name) {
+  showConfirm('解封用户', `确定要解封用户「${name}」吗？`, async () => {
+    try {
+      await api('/api/admin/users/' + id + '/unban', {
+        method: 'POST'
+      });
+      showToast('用户已解封');
+      loadUsers();
+    } catch (e) {
+      showToast('解封失败: ' + e.message, 'error');
+    }
+  });
+}
+
+// ─── Invites ─────────────────────────────────────────
+async function loadInvites() {
+  document.getElementById('invitesTableWrap').innerHTML = '<div class="loading">加载中</div>';
+  try {
+    const userInfo = await api('/api/auth/me');
+    const codes = await api('/api/invite/list?userId=' + userInfo.id);
+    renderInvites(codes);
+  } catch (e) {
+    document.getElementById('invitesTableWrap').innerHTML = '<div class="empty-state">加载失败: ' + e.message + '</div>';
+  }
+}
+
+function renderInvites(codes) {
+  const wrap = document.getElementById('invitesTableWrap');
+  if (!codes || codes.length === 0) {
+    wrap.innerHTML = '<div class="empty-state">暂无邀请码</div>';
+    return;
+  }
+  let html = `<table>
+    <thead><tr>
+      <th>邀请码</th><th>创建人</th><th>使用次数</th><th>最大次数</th><th>创建时间</th>
+    </tr></thead><tbody>`;
+  for (const c of codes) {
+    html += `<tr>
+      <td style="font-family:monospace;font-size:14px;font-weight:600;letter-spacing:2px;color:#6c8cff;">${c.code}</td>
+      <td>${c.creator_name || c.created_by || '-'}</td>
+      <td><span style="color:${c.used_count >= c.max_uses ? '#ef4444' : '#22c55e'};">${c.used_count}</span> / ${c.max_uses}</td>
+      <td>${c.max_uses}</td>
+      <td style="font-size:11px;color:#888;">${c.created_at ? c.created_at.substring(0, 16) : '-'}</td>
+    </tr>`;
+  }
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+async function generateInvites() {
+  const count = parseInt(document.getElementById('inviteCount').value) || 1;
+  try {
+    const data = await api('/api/invite/generate', {
+      method: 'POST',
+      body: JSON.stringify({ count })
+    });
+    showToast(`成功生成 ${data.codes.length} 个邀请码`);
+    loadInvites();
+    loadDashboard();
+  } catch (e) {
+    showToast('生成失败: ' + e.message, 'error');
+  }
+}
+
+async function loadInviteUserSelect() {
+  try {
+    const users = await api('/api/admin/users');
+    const sel = document.getElementById('inviteTargetUser');
+    sel.innerHTML = '<option value="">-- 为用户生成 --</option>';
+    for (const u of users) {
+      const opt = document.createElement('option');
+      opt.value = u.id;
+      opt.textContent = `${u.username} (${u.name || u.username})`;
+      sel.appendChild(opt);
+    }
+  } catch (e) {
+    // Silently fail
+  }
+}
+
+async function generateInvitesFor() {
+  const userId = document.getElementById('inviteTargetUser').value;
+  const count = parseInt(document.getElementById('inviteForCount').value) || 1;
+  if (!userId) {
+    showToast('请先选择目标用户', 'error');
+    return;
+  }
+  try {
+    const data = await api('/api/invite/generate-for', {
+      method: 'POST',
+      body: JSON.stringify({ userId, count })
+    });
+    showToast(`成功为用户生成 ${data.codes.length} 个邀请码`);
+    loadInvites();
+    loadDashboard();
+  } catch (e) {
+    showToast('生成失败: ' + e.message, 'error');
+  }
+}
+
+// ─── Block Management ────────────────────────────────
+
+// IP
+async function loadBlockedIps() {
+  document.getElementById('blockedIpsTableWrap').innerHTML = '<div class="loading">加载中</div>';
+  try {
+    const ips = await api('/api/admin/block/ips');
+    renderBlockedIps(ips);
+  } catch (e) {
+    document.getElementById('blockedIpsTableWrap').innerHTML = '<div class="empty-state">加载失败: ' + e.message + '</div>';
+  }
+}
+
+function renderBlockedIps(ips) {
+  const wrap = document.getElementById('blockedIpsTableWrap');
+  if (!ips || ips.length === 0) {
+    wrap.innerHTML = '<div class="empty-state">暂无被封禁的IP</div>';
+    return;
+  }
+  let html = `<table>
+    <thead><tr>
+      <th>IP地址</th><th>原因</th><th>创建人</th><th>创建时间</th><th>操作</th>
+    </tr></thead><tbody>`;
+  for (const b of ips) {
+    html += `<tr>
+      <td style="font-family:monospace;color:#ef4444;">${b.ip}</td>
+      <td>${b.reason || '-'}</td>
+      <td style="font-size:12px;color:#888;">${b.created_by ? b.created_by.substring(0, 8) : '-'}</td>
+      <td style="font-size:11px;color:#888;">${b.created_at ? b.created_at.substring(0, 16) : '-'}</td>
+      <td><button class="btn btn-success btn-sm" onclick="unblockIp('${b.ip}')">解封</button></td>
+    </tr>`;
+  }
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+async function blockIp() {
+  const ip = document.getElementById('blockIpInput').value.trim();
+  const reason = document.getElementById('blockIpReason').value.trim();
+  if (!ip) { showToast('请输入IP地址', 'error'); return; }
+  try {
+    await api('/api/admin/block/ip', {
+      method: 'POST',
+      body: JSON.stringify({ ip, reason: reason || '管理员封禁' })
+    });
+    showToast('IP已封禁');
+    document.getElementById('blockIpInput').value = '';
+    document.getElementById('blockIpReason').value = '';
+    loadBlockedIps();
+  } catch (e) {
+    showToast('封禁失败: ' + e.message, 'error');
+  }
+}
+
+async function unblockIp(ip) {
+  showConfirm('解封IP', `确定要解封IP「${ip}」吗？`, async () => {
+    try {
+      await api('/api/admin/block/ip/' + encodeURIComponent(ip), { method: 'DELETE' });
+      showToast('IP已解封');
+      loadBlockedIps();
+    } catch (e) {
+      showToast('解封失败: ' + e.message, 'error');
+    }
+  });
+}
+
+// Devices
+async function loadBlockedDevices() {
+  document.getElementById('blockedDevicesTableWrap').innerHTML = '<div class="loading">加载中</div>';
+  try {
+    const devices = await api('/api/admin/block/devices');
+    renderBlockedDevices(devices);
+  } catch (e) {
+    document.getElementById('blockedDevicesTableWrap').innerHTML = '<div class="empty-state">加载失败: ' + e.message + '</div>';
+  }
+}
+
+function renderBlockedDevices(devices) {
+  const wrap = document.getElementById('blockedDevicesTableWrap');
+  if (!devices || devices.length === 0) {
+    wrap.innerHTML = '<div class="empty-state">暂无被封禁的设备</div>';
+    return;
+  }
+  let html = `<table>
+    <thead><tr>
+      <th>设备ID</th><th>原因</th><th>创建人</th><th>创建时间</th><th>操作</th>
+    </tr></thead><tbody>`;
+  for (const b of devices) {
+    html += `<tr>
+      <td style="font-family:monospace;font-size:11px;color:#ef4444;">${b.device_id}</td>
+      <td>${b.reason || '-'}</td>
+      <td style="font-size:12px;color:#888;">${b.created_by ? b.created_by.substring(0, 8) : '-'}</td>
+      <td style="font-size:11px;color:#888;">${b.created_at ? b.created_at.substring(0, 16) : '-'}</td>
+      <td><button class="btn btn-success btn-sm" onclick="unblockDevice('${b.device_id}')">解封</button></td>
+    </tr>`;
+  }
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+async function blockDevice() {
+  const device_id = document.getElementById('blockDeviceInput').value.trim();
+  const reason = document.getElementById('blockDeviceReason').value.trim();
+  if (!device_id) { showToast('请输入设备ID', 'error'); return; }
+  try {
+    await api('/api/admin/block/device', {
+      method: 'POST',
+      body: JSON.stringify({ device_id, reason: reason || '管理员封禁' })
+    });
+    showToast('设备已封禁');
+    document.getElementById('blockDeviceInput').value = '';
+    document.getElementById('blockDeviceReason').value = '';
+    loadBlockedDevices();
+  } catch (e) {
+    showToast('封禁失败: ' + e.message, 'error');
+  }
+}
+
+async function unblockDevice(deviceId) {
+  showConfirm('解封设备', `确定要解封设备「${deviceId.substring(0, 16)}...」吗？`, async () => {
+    try {
+      await api('/api/admin/block/device/' + encodeURIComponent(deviceId), { method: 'DELETE' });
+      showToast('设备已解封');
+      loadBlockedDevices();
+    } catch (e) {
+      showToast('解封失败: ' + e.message, 'error');
+    }
+  });
+}
+
+// ─── 2FA ─────────────────────────────────────────────
+let twofaPendingSecret = null;
+
+async function loadTwofaStatus() {
+  document.getElementById('twofaLoading').style.display = 'block';
+  document.getElementById('twofaSetup').style.display = 'none';
+  document.getElementById('twofaEnabled').style.display = 'none';
+  document.getElementById('twofaDisabled').style.display = 'none';
+  try {
+    const status = await api('/api/admin/2fa/status');
+    if (status.enabled) {
+      document.getElementById('twofaEnabled').style.display = 'block';
+    } else {
+      document.getElementById('twofaDisabled').style.display = 'block';
+    }
+  } catch (e) {
+    showToast('检查2FA状态失败: ' + e.message, 'error');
+    document.getElementById('twofaDisabled').style.display = 'block';
+  }
+  document.getElementById('twofaLoading').style.display = 'none';
+}
+
+async function setupTwofa() {
+  try {
+    const data = await api('/api/admin/2fa/setup', { method: 'POST' });
+    twofaPendingSecret = data.secret;
+    document.getElementById('twofaDisabled').style.display = 'none';
+    document.getElementById('twofaSetup').style.display = 'block';
+    document.getElementById('twofaQrContainer').innerHTML = data.qr_data_url
+      ? `<img src="${data.qr_data_url}" alt="QR Code" style="max-width:200px;border-radius:8px;">`
+      : '<p style="color:#888;font-size:13px;">无法生成二维码</p>';
+    document.getElementById('twofaSecretDisplay').textContent = '密钥: ' + data.secret;
+  } catch (e) {
+    showToast('设置失败: ' + e.message, 'error');
+  }
+}
+
+async function verifyTwofa() {
+  const token = document.getElementById('twofaToken').value.trim();
+  if (!token || token.length !== 6) {
+    showToast('请输入6位验证码', 'error');
+    return;
+  }
+  try {
+    await api('/api/admin/2fa/verify', {
+      method: 'POST',
+      body: JSON.stringify({ token, secret: twofaPendingSecret })
+    });
+    showToast('2FA已启用');
+    twofaPendingSecret = null;
+    loadTwofaStatus();
+  } catch (e) {
+    showToast('验证失败: ' + e.message, 'error');
+  }
+}
+
+function cancelTwofaSetup() {
+  twofaPendingSecret = null;
+  loadTwofaStatus();
+}
+
+async function disableTwofa() {
+  showConfirm('禁用两步验证', '确定要禁用两步验证吗？禁用后登录将不需要验证码。', async () => {
+    try {
+      await api('/api/admin/2fa/disable', { method: 'POST' });
+      showToast('2FA已禁用');
+      loadTwofaStatus();
+    } catch (e) {
+      showToast('禁用失败: ' + e.message, 'error');
+    }
+  });
+}
+
+// ─── Init ────────────────────────────────────────────
+async function initAuth() {
+  if (!token) {
+    document.getElementById('loginPage').style.display = 'flex';
+    return;
+  }
+
+  try {
+    // Verify token by calling stats
+    await api('/api/admin/stats');
+    document.getElementById('loginPage').style.display = 'none';
+    document.getElementById('app').style.display = 'flex';
+    loadDashboard();
+  } catch (e) {
+    // Token invalid
+    token = '';
+    localStorage.removeItem('neoant_admin_token');
+    document.getElementById('loginPage').style.display = 'flex';
+  }
+}
+
+// Enter key on login
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && document.getElementById('loginPage').style.display !== 'none') {
+    login();
+  }
+});
+
+initAuth();
+</script>
+</body>
+</html>

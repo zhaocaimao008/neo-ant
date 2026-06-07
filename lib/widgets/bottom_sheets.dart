@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
-import '../services/l10n_helper.dart';
 
-void showMessageActions(BuildContext context, {bool isMe = false, VoidCallback? onCopy, VoidCallback? onReply, VoidCallback? onDelete, VoidCallback? onFavorite, VoidCallback? onForward}) {
+void showMessageActions(BuildContext context, {bool isMe = false, VoidCallback? onCopy, VoidCallback? onReply, VoidCallback? onDelete, VoidCallback? onFavorite, VoidCallback? onForward, VoidCallback? onRecall}) {
   final isDark = Theme.of(context).brightness == Brightness.dark;
   final bgColor = isDark ? const Color(0xFF1E254A) : Colors.white;
   final txtColor = isDark ? const Color(0xFFF0F2F5) : const Color(0xFF202124);
@@ -30,15 +29,16 @@ void showMessageActions(BuildContext context, {bool isMe = false, VoidCallback? 
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
-            _ActionItem(Icons.content_copy, context.t('copy'), txtColor, iconColor, onTap: () { Navigator.pop(context); onCopy?.call(); }),
-            _ActionItem(Icons.reply_outlined, context.t('reply'), txtColor, iconColor, onTap: () { Navigator.pop(context); onReply?.call(); }),
-            if (isMe) _ActionItem(Icons.edit_outlined, context.t('edit'), txtColor, iconColor, onTap: () { Navigator.pop(context); }),
-            _ActionItem(Icons.share_outlined, context.t('forward'), txtColor, iconColor, onTap: () { Navigator.pop(context); onForward?.call(); }),
-            if (isMe) _ActionItem(Icons.star_outline, context.t('favorite'), txtColor, iconColor, onTap: () { Navigator.pop(context); onFavorite?.call(); }),
+            _ActionItem(Icons.content_copy, '复制', txtColor, iconColor, onTap: () { Navigator.pop(context); onCopy?.call(); }),
+            _ActionItem(Icons.reply_outlined, '回复', txtColor, iconColor, onTap: () { Navigator.pop(context); onReply?.call(); }),
+            if (onRecall != null) _ActionItem(Icons.undo, '撤回', txtColor, iconColor, onTap: () { Navigator.pop(context); onRecall?.call(); }),
+            if (isMe) _ActionItem(Icons.edit_outlined, '编辑', txtColor, iconColor, onTap: () { Navigator.pop(context); }),
+            _ActionItem(Icons.share_outlined, '转发', txtColor, iconColor, onTap: () { Navigator.pop(context); onForward?.call(); }),
+            if (isMe) _ActionItem(Icons.star_outline, '收藏', txtColor, iconColor, onTap: () { Navigator.pop(context); onFavorite?.call(); }),
             if (isMe)
-              _ActionItem(Icons.delete_outline, isMe ? context.t('delete') : context.t('delete'), const Color(0xFFFF3B30), const Color(0xFFFF3B30), onTap: () { Navigator.pop(context); onDelete?.call(); })
+              _ActionItem(Icons.delete_outline, isMe ? '删除' : '删除', const Color(0xFFFF3B30), const Color(0xFFFF3B30), onTap: () { Navigator.pop(context); onDelete?.call(); })
             else
-              _ActionItem(Icons.delete_outline, context.t('delete'), const Color(0xFFFF3B30), const Color(0xFFFF3B30), onTap: () { Navigator.pop(context); onDelete?.call(); }),
+              _ActionItem(Icons.delete_outline, '删除', const Color(0xFFFF3B30), const Color(0xFFFF3B30), onTap: () { Navigator.pop(context); onDelete?.call(); }),
           ],
         ),
       ),
@@ -104,7 +104,7 @@ void showShareSheet(BuildContext context) {
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
-            Text(context.t('forwardTo'), style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: txtColor)),
+            Text('转发到', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: txtColor)),
             const SizedBox(height: 16),
             SizedBox(
               height: 100,

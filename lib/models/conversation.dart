@@ -8,7 +8,7 @@ class Conversation {
   final bool isPinned;
   final bool isGroup;
   final String? avatarText;
-  final int memberCount;
+  final int? memberCount;
 
   const Conversation({
     required this.id,

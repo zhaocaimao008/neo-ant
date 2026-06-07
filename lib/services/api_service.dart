@@ -7,8 +7,7 @@ import 'package:web_socket_channel/status.dart' as status;
 class ApiService {
   // Production server URL — set via --dart-define=SERVER_URL=https://dipsin.com
   // When empty, uses relative URLs (works for web served from same domain)
-  // Change to use HTTP on port 8080 to avoid SSL issues on Chinese mobile networks
-  static const String _serverUrl = String.fromEnvironment('SERVER_URL', defaultValue: 'http://dipsin.com:8080');
+  static const String _serverUrl = String.fromEnvironment('SERVER_URL', defaultValue: 'https://dipsin.com');
   static const String baseUrl = _serverUrl;
   static bool get _isProduction => _serverUrl.isNotEmpty;
   static final ApiService _instance = ApiService._();
@@ -53,8 +52,12 @@ class ApiService {
   Stream<Map> get contactStream => _contactController.stream;
 
   // ─── Auth ────────────────────────────────────────────────────
-  Future<Map> login(String username, String password) async {
-    final r = await _dio.post('/api/auth/login', data: {'username': username, 'password': password});
+  Future<Map> login(String username, String password, {String? deviceId}) async {
+    final r = await _dio.post('/api/auth/login', data: {
+      'username': username,
+      'password': password,
+      if (deviceId != null) 'device_id': deviceId,
+    });
     if (r.data['ok'] == true) {
       _currentUserName = r.data['user']?['name'] ?? r.data['user']?['username'] ?? '';
       final token = r.data['token'] as String?;
@@ -96,8 +99,10 @@ class ApiService {
   }
 
   // ─── Messages ───────────────────────────────────────────────
-  Future<List> getMessages(String conversationId) async {
-    final r = await _dio.get('/api/messages/$conversationId');
+  Future<List> getMessages(String conversationId, {String? before, int limit = 50}) async {
+    final params = <String, dynamic>{'limit': limit};
+    if (before != null) params['before'] = before;
+    final r = await _dio.get('/api/messages/$conversationId', queryParameters: params);
     return r.data;
   }
 
@@ -246,6 +251,92 @@ class ApiService {
   Future<List> listInviteCodes(String userId) async {
     final r = await _dio.get('/api/invite/list', queryParameters: {'userId': userId});
     return r.data;
+  }
+
+  // ─── Admin ──────────────────────────────────────────────────
+  Future<dynamic> adminApi(String path, {String method = 'GET', Map<String, dynamic>? body}) async {
+    final r = await _dio.request(path,
+        data: body,
+        options: Options(method: method));
+    return r.data;
+  }
+
+  Future<Map> adminGetStats() async {
+    final r = await _dio.get('/api/admin/stats');
+    return r.data;
+  }
+
+  Future<Map> adminGetUsers({int page = 1, int limit = 50}) async {
+    final r = await _dio.get('/api/admin/users', queryParameters: {'page': page, 'limit': limit});
+    return r.data;
+  }
+
+  Future<void> adminBanUser(String userId, {bool ban = true}) async {
+    await _dio.post('/api/admin/users/ban', data: {'userId': userId, 'ban': ban});
+  }
+
+  Future<Map> adminGetInviteCodes({int page = 1, int limit = 50}) async {
+    final r = await _dio.get('/api/admin/invite-codes', queryParameters: {'page': page, 'limit': limit});
+    return r.data;
+  }
+
+  Future<void> adminGenerateInviteCodes({int count = 1, int maxUses = 1}) async {
+    await _dio.post('/api/admin/invite-codes/generate', data: {'count': count, 'maxUses': maxUses});
+  }
+
+  Future<void> adminDeleteInviteCode(String code) async {
+    await _dio.post('/api/admin/invite-codes/delete', data: {'code': code});
+  }
+
+  // ─── 2FA ────────────────────────────────────────────────────
+  Future<Map> verify2fa(String tempToken, String code) async {
+    final r = await _dio.post('/api/auth/2fa/verify', data: {
+      'tempToken': tempToken,
+      'code': code,
+    });
+    return r.data;
+  }
+
+  Future<Map> get2faStatus(String userId) async {
+    final r = await _dio.get('/api/2fa/status/$userId');
+    return r.data;
+  }
+
+  Future<Map> setup2fa(String userId) async {
+    final r = await _dio.post('/api/2fa/setup', data: {'userId': userId});
+    return r.data;
+  }
+
+  Future<Map> verify2faSetup(String userId, String code) async {
+    final r = await _dio.post('/api/2fa/verify-setup', data: {'userId': userId, 'code': code});
+    return r.data;
+  }
+
+  Future<void> disable2fa(String userId, String code) async {
+    await _dio.post('/api/2fa/disable', data: {'userId': userId, 'code': code});
+  }
+
+  Future<Map> banDevice(String userId, String deviceId) async {
+    final r = await _dio.post('/api/admin/devices/ban', data: {'userId': userId, 'deviceId': deviceId});
+    return r.data;
+  }
+
+  Future<Map> banIp(String ip) async {
+    final r = await _dio.post('/api/admin/ip/ban', data: {'ip': ip});
+    return r.data;
+  }
+
+  // ─── Friend Requests ─────────────────────────────────────────
+  Future<List> getFriendRequests(String userId) async {
+    final r = await _dio.get('/api/friend-requests/$userId');
+    return r.data;
+  }
+
+  Future<void> respondToFriendRequest(String requestId, String action) async {
+    await _dio.post('/api/friend-requests/respond', data: {
+      'requestId': requestId,
+      'action': action, // 'accepted' or 'rejected'
+    });
   }
 
   // ─── Upload ─────────────────────────────────────────────────

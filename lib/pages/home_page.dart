@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
-import '../services/l10n_helper.dart';
 import 'chat_list_page.dart';
 import 'contacts_page.dart';
 import 'settings_page.dart';
@@ -123,10 +122,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           unselectedFontSize: 11,
           selectedLabelStyle: const TextStyle(fontWeight: FontWeight.w600),
           items: [
-            BottomNavigationBarItem(icon: const Icon(Icons.chat_bubble_outline), activeIcon: const Icon(Icons.chat_bubble), label: context.t('chats')),
-            BottomNavigationBarItem(icon: const Icon(Icons.contacts_outlined), activeIcon: const Icon(Icons.contacts), label: context.t('contacts')),
-            BottomNavigationBarItem(icon: const Icon(Icons.star_border), activeIcon: const Icon(Icons.star), label: context.t('favorites')),
-            BottomNavigationBarItem(icon: const Icon(Icons.settings_outlined), activeIcon: const Icon(Icons.settings), label: context.t('settings')),
+            BottomNavigationBarItem(icon: const Icon(Icons.chat_bubble_outline), activeIcon: const Icon(Icons.chat_bubble), label: '聊天'),
+            BottomNavigationBarItem(icon: const Icon(Icons.contacts_outlined), activeIcon: const Icon(Icons.contacts), label: '通讯录'),
+            BottomNavigationBarItem(icon: const Icon(Icons.star_border), activeIcon: const Icon(Icons.star), label: '收藏'),
+            BottomNavigationBarItem(icon: const Icon(Icons.settings_outlined), activeIcon: const Icon(Icons.settings), label: '设置'),
           ],
         ),
       ),

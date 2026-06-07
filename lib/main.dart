@@ -1,15 +1,15 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
 import 'theme/app_theme.dart';
 import 'pages/splash_page.dart';
 import 'services/api_service.dart';
-import 'services/localization_service.dart';
 
 void main() {
-  // Bypass SSL certificate validation for all platforms (fixes Windows HTTPS issues)
-  HttpOverrides.global = _NoCertHttpOverrides();
+  // Bypass SSL certificate validation only in debug mode
+  if (bool.fromEnvironment('DEBUG', defaultValue: false)) {
+    HttpOverrides.global = _NoCertHttpOverrides();
+  }
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
@@ -31,22 +31,15 @@ class NeoAntApp extends StatefulWidget {
 
 class _NeoAntAppState extends State<NeoAntApp> with WidgetsBindingObserver {
   bool _isDark = false;
-  Locale _locale = const Locale('zh');
 
   void toggleTheme() {
     setState(() => _isDark = !_isDark);
-  }
-
-  void setLocale(Locale locale) {
-    setState(() => _locale = locale);
-    LocalizationService().load(locale);
   }
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    LocalizationService().load(_locale);
   }
 
   @override
@@ -71,16 +64,7 @@ class _NeoAntAppState extends State<NeoAntApp> with WidgetsBindingObserver {
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: _isDark ? ThemeMode.dark : ThemeMode.light,
-      locale: _locale,
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      supportedLocales: const [
-        Locale('zh'),
-        Locale('en'),
-      ],
+      locale: const Locale('zh', 'CN'),
       home: const SplashPage(),
     );
   }

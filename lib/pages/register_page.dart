@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../services/api_service.dart';
-import '../services/l10n_helper.dart';
 import 'home_page.dart';
 
 class RegisterPage extends StatefulWidget {
@@ -60,11 +60,11 @@ class _RegisterPageState extends State<RegisterPage> {
       return;
     }
     if (pwd.length < 6) {
-      setState(() => _error = context.t('passwordTooShort'));
+      setState(() => _error = '密码太短（至少6位）');
       return;
     }
     if (pwd != confirmPwd) {
-      setState(() => _error = context.t('passwordsNotMatch'));
+      setState(() => _error = '两次输入的密码不一致');
       return;
     }
 
@@ -80,19 +80,20 @@ class _RegisterPageState extends State<RegisterPage> {
         // Persist login
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('userId', userId);
-        await prefs.setString('authToken', token);
+        const storage = FlutterSecureStorage();
+        await storage.write(key: 'authToken', value: token);
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(builder: (_) => HomePage(userId: userId)),
           (route) => false,
         );
       } else {
         setState(() {
-          _error = result['error']?.toString() ?? result['message']?.toString() ?? context.t('registerFailed');
+          _error = result['error']?.toString() ?? result['message']?.toString() ?? '注册失败';
         });
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _error = context.t('networkError'));
+        setState(() => _error = '网络错误，请检查连接');
       }
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -111,7 +112,7 @@ class _RegisterPageState extends State<RegisterPage> {
           icon: Icon(Icons.arrow_back, color: isDark ? const Color(0xFF5A6180) : const Color(0xFF5E5E5E)),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: Text(context.t('registerTitle'),
+        title: Text('注册账号',
           style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600,
             color: isDark ? const Color(0xFFF0F2F5) : const Color(0xFF202124))),
       ),
@@ -128,7 +129,7 @@ class _RegisterPageState extends State<RegisterPage> {
                 TextField(
                   controller: _nameCtrl,
                   decoration: InputDecoration(
-                    hintText: context.t('inputName'),
+                    hintText: '输入昵称',
                     prefixIcon: Icon(Icons.person_outlined, size: 20,
                       color: isDark ? const Color(0xFF8E95A8) : const Color(0xFFAAAAAA)),
                   ),
@@ -179,7 +180,7 @@ class _RegisterPageState extends State<RegisterPage> {
                   controller: _pwdCtrl,
                   obscureText: _obscurePwd,
                   decoration: InputDecoration(
-                    hintText: context.t('inputPassword'),
+                    hintText: '输入密码',
                     prefixIcon: Icon(Icons.lock_outlined, size: 20,
                       color: isDark ? const Color(0xFF8E95A8) : const Color(0xFFAAAAAA)),
                     suffixIcon: IconButton(
@@ -197,7 +198,7 @@ class _RegisterPageState extends State<RegisterPage> {
                   controller: _confirmPwdCtrl,
                   obscureText: _obscureConfirm,
                   decoration: InputDecoration(
-                    hintText: context.t('inputPasswordConfirm'),
+                    hintText: '确认密码',
                     prefixIcon: Icon(Icons.lock_outlined, size: 20,
                       color: isDark ? const Color(0xFF8E95A8) : const Color(0xFFAAAAAA)),
                     suffixIcon: IconButton(
@@ -232,7 +233,7 @@ class _RegisterPageState extends State<RegisterPage> {
                     ),
                     child: _loading
                         ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                        : Text(context.t('register'), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
+                        : Text('注册', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -241,11 +242,11 @@ class _RegisterPageState extends State<RegisterPage> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text(context.t('hasAccount'),
+                    Text('已有账号？',
                       style: TextStyle(fontSize: 13, color: isDark ? const Color(0xFF8E95A8) : const Color(0xFFAAAAAA))),
                     GestureDetector(
                       onTap: () => Navigator.of(context).pop(),
-                      child: Text(context.t('backToLogin'),
+                      child: Text('返回登录',
                         style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600,
                           color: const Color(0xFF1AA4EC))),
                     ),

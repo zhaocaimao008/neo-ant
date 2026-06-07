@@ -135,6 +135,8 @@ db.exec(`
     text TEXT DEFAULT '',
     type TEXT DEFAULT 'text',
     file_url TEXT DEFAULT '',
+    reply_to TEXT DEFAULT NULL,
+    recalled INTEGER DEFAULT 0,
     created_at TEXT DEFAULT (datetime('now')),
     FOREIGN KEY (conversation_id) REFERENCES conversations(id),
     FOREIGN KEY (sender_id) REFERENCES users(id)
@@ -187,7 +189,43 @@ db.exec(`
     created_at TEXT DEFAULT (datetime('now')),
     FOREIGN KEY (user_id) REFERENCES users(id)
   );
+  CREATE TABLE IF NOT EXISTS friend_requests (
+    id TEXT PRIMARY KEY,
+    from_id TEXT NOT NULL,
+    to_id TEXT NOT NULL,
+    status TEXT DEFAULT 'pending',
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (from_id) REFERENCES users(id),
+    FOREIGN KEY (to_id) REFERENCES users(id)
+  );
+  CREATE TABLE IF NOT EXISTS read_receipts (
+    id TEXT PRIMARY KEY,
+    conversation_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    last_read_at TEXT DEFAULT (datetime('now')),
+    UNIQUE (conversation_id, user_id)
+  );
+  CREATE TABLE IF NOT EXISTS group_announcements (
+    id TEXT PRIMARY KEY,
+    conversation_id TEXT NOT NULL,
+    sender_id TEXT NOT NULL,
+    content TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+  CREATE TABLE IF NOT EXISTS muted_members (
+    conversation_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    muted_by TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (conversation_id, user_id)
+  );
 `);
+
+// Migration: add extra columns to messages table
+const msgCols = db.prepare("PRAGMA table_info('messages')").all().map(c => c.name);
+if (!msgCols.includes('file_name')) db.exec("ALTER TABLE messages ADD COLUMN file_name TEXT DEFAULT ''");
+if (!msgCols.includes('file_size')) db.exec("ALTER TABLE messages ADD COLUMN file_size INTEGER DEFAULT 0");
+if (!msgCols.includes('duration')) db.exec("ALTER TABLE messages ADD COLUMN duration INTEGER DEFAULT NULL");
 
 // Clean expired sessions (older than 30 days)
 db.exec("DELETE FROM sessions WHERE created_at < datetime('now', '-30 days')");
@@ -220,6 +258,15 @@ db.prepare("INSERT OR REPLACE INTO id_counter (name, next_id) VALUES ('user_uid'
 const tableInfo = db.prepare("PRAGMA table_info('user_settings')").all();
 if (!tableInfo.some(col => col.name === 'notify_preview')) {
   db.exec("ALTER TABLE user_settings ADD COLUMN notify_preview INTEGER DEFAULT 1");
+}
+
+// Migrate messages table to add reply_to and recalled columns
+const msgTableInfo = db.prepare("PRAGMA table_info('messages')").all();
+if (!msgTableInfo.some(col => col.name === 'reply_to')) {
+  db.exec("ALTER TABLE messages ADD COLUMN reply_to TEXT DEFAULT NULL");
+}
+if (!msgTableInfo.some(col => col.name === 'recalled')) {
+  db.exec("ALTER TABLE messages ADD COLUMN recalled INTEGER DEFAULT 0");
 }
 
 // ─── Auth Middleware ──────────────────────────────────────────
@@ -430,13 +477,34 @@ app.get('/api/conversations/:userId', (req, res) => {
 
 // Messages (read)
 app.get('/api/messages/:conversationId', (req, res) => {
-  const msgs = db.prepare(`
-    SELECT m.*, u.name as sender_name, u.avatar as sender_avatar
-    FROM messages m JOIN users u ON u.id = m.sender_id
-    WHERE m.conversation_id = ?
-    ORDER BY m.created_at ASC
-    LIMIT 200
-  `).all(req.params.conversationId);
+  const { before, limit } = req.query;
+  const lim = Math.min(parseInt(limit) || 50, 100);
+  let msgs;
+  if (before) {
+    const pivot = db.prepare('SELECT created_at FROM messages WHERE id = ?').get(before);
+    if (!pivot) return res.json([]);
+    msgs = db.prepare(`
+      SELECT m.*, u.name as sender_name, u.avatar as sender_avatar,
+        r.text as reply_text, r.type as reply_type, ru.name as reply_sender_name
+      FROM messages m JOIN users u ON u.id = m.sender_id
+      LEFT JOIN messages r ON r.id = m.reply_to
+      LEFT JOIN users ru ON ru.id = r.sender_id
+      WHERE m.conversation_id = ? AND m.created_at < ?
+      ORDER BY m.created_at DESC LIMIT ?
+    `).all(req.params.conversationId, pivot.created_at, lim);
+    msgs.reverse();
+  } else {
+    msgs = db.prepare(`
+      SELECT m.*, u.name as sender_name, u.avatar as sender_avatar,
+        r.text as reply_text, r.type as reply_type, ru.name as reply_sender_name
+      FROM messages m JOIN users u ON u.id = m.sender_id
+      LEFT JOIN messages r ON r.id = m.reply_to
+      LEFT JOIN users ru ON ru.id = r.sender_id
+      WHERE m.conversation_id = ?
+      ORDER BY m.created_at DESC LIMIT ?
+    `).all(req.params.conversationId, lim);
+    msgs.reverse();
+  }
   res.json(msgs);
 });
 
@@ -527,17 +595,29 @@ app.post('/api/contacts/add', authMiddleware, (req, res) => {
   }
   if (!contact) return res.status(404).json({ error: '用户不存在' });
   const contactUser = db.prepare('SELECT id, name FROM users WHERE id = ?').get(contact.id);
-  try {
-    db.prepare('INSERT INTO contacts (user_id, contact_id, remark) VALUES (?, ?, ?)').run(userId, contact.id, remark || '');
-    db.prepare('INSERT INTO contacts (user_id, contact_id) VALUES (?, ?)').run(contact.id, userId);
-    // Notify via WebSocket
-    const requester = db.prepare('SELECT name FROM users WHERE id = ?').get(userId);
-    const clients = wsClients.get(contact.id);
-    if (clients) {
-      clients.forEach(c => { try { c.send(JSON.stringify({ type: 'contact:added', from_id: userId, from_name: requester?.name || '' })); } catch {} });
-    }
-    res.json({ ok: true });
-  } catch { res.status(400).json({ error: '已经是好友了' }); }
+
+  // Check if already contacts
+  const existing = db.prepare('SELECT * FROM contacts WHERE user_id = ? AND contact_id = ?').get(userId, contact.id);
+  if (existing) return res.status(400).json({ error: '已经是好友了' });
+
+  // Check if there's already a pending friend request
+  const pendingReq = db.prepare(
+    "SELECT * FROM friend_requests WHERE from_id = ? AND to_id = ? AND status = 'pending'"
+  ).get(userId, contact.id);
+  if (pendingReq) return res.json({ ok: true, message: '好友请求已发送' });
+
+  // Create friend request
+  const requestId = uuidv4();
+  db.prepare('INSERT INTO friend_requests (id, from_id, to_id, status) VALUES (?, ?, ?, \'pending\')')
+    .run(requestId, userId, contact.id);
+
+  // Notify the target user via WebSocket
+  const requester = db.prepare('SELECT name FROM users WHERE id = ?').get(userId);
+  const clients = wsClients.get(contact.id);
+  if (clients) {
+    clients.forEach(c => { try { c.send(JSON.stringify({ type: 'friend_request', from_id: userId, from_name: requester?.name || '' })); } catch {} });
+  }
+  res.json({ ok: true, message: '好友请求已发送' });
 });
 
 app.post('/api/contacts/remove', authMiddleware, (req, res) => {
@@ -547,6 +627,45 @@ app.post('/api/contacts/remove', authMiddleware, (req, res) => {
   if (!contact) return res.status(404).json({ error: '联系人不存在' });
   db.prepare('DELETE FROM contacts WHERE user_id = ? AND contact_id = ?').run(userId, contact.id);
   db.prepare('DELETE FROM contacts WHERE user_id = ? AND contact_id = ?').run(contact.id, userId);
+  res.json({ ok: true });
+});
+
+// ─── Friend Requests ────────────────────────────────────────────
+app.get('/api/friend-requests/:userId', authMiddleware, (req, res) => {
+  const requests = db.prepare(`
+    SELECT fr.*, u.name as from_name, u.avatar as from_avatar
+    FROM friend_requests fr JOIN users u ON u.id = fr.from_id
+    WHERE fr.to_id = ? AND fr.status = 'pending'
+    ORDER BY fr.created_at DESC
+  `).all(req.params.userId);
+  res.json(requests);
+});
+
+app.post('/api/friend-requests/respond', authMiddleware, (req, res) => {
+  const { requestId, action } = req.body;
+  if (!requestId || !['accepted', 'rejected'].includes(action)) {
+    return res.status(400).json({ error: '参数错误' });
+  }
+  db.prepare("UPDATE friend_requests SET status = ? WHERE id = ?").run(action, requestId);
+
+  const request = db.prepare('SELECT * FROM friend_requests WHERE id = ?').get(requestId);
+  if (!request) return res.status(404).json({ error: '请求不存在' });
+
+  if (action === 'accepted') {
+    // Auto-add as contacts
+    try {
+      db.prepare('INSERT INTO contacts (user_id, contact_id) VALUES (?, ?)').run(request.to_id, request.from_id);
+      db.prepare('INSERT INTO contacts (user_id, contact_id) VALUES (?, ?)').run(request.from_id, request.to_id);
+    } catch(e) {
+      // Already contacts, that's fine
+    }
+    // Notify the requester
+    const clients = wsClients.get(request.from_id);
+    if (clients) {
+      clients.forEach(c => { try { c.send(JSON.stringify({ type: 'contact:added', from_id: request.to_id })); } catch {} });
+    }
+  }
+
   res.json({ ok: true });
 });
 

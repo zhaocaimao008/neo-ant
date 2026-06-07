@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../main.dart';
 import '../services/api_service.dart';
-import '../services/l10n_helper.dart';
-import '../services/localization_service.dart';
 import '../widgets/ant_avatar.dart';
 import 'login_page.dart';
 import 'profile_page.dart';
 import 'privacy_settings_page.dart';
 import 'notification_settings_page.dart';
+import 'admin_dashboard_page.dart';
+import 'admin_2fa_page.dart';
 
 class SettingsPage extends StatefulWidget {
   final String userId;
@@ -42,7 +43,7 @@ class _SettingsPageState extends State<SettingsPage> {
     } catch (_) {}
   }
 
-  String get _displayName => _userName.isNotEmpty ? _userName : context.t('name');
+  String get _displayName => _userName.isNotEmpty ? _userName : '用户';
   String get _displayUsername => _userUsername.isNotEmpty ? _userUsername : '';
 
   void _showAccountSecurityDialog() {
@@ -50,18 +51,18 @@ class _SettingsPageState extends State<SettingsPage> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(context.t('updateName')),
+        title: Text('修改昵称'),
         content: TextField(
           controller: nameCtrl,
           decoration: InputDecoration(
-            labelText: context.t('newName'),
+            labelText: '新昵称',
             border: OutlineInputBorder(),
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: Text(context.t('cancel')),
+            child: Text('取消'),
           ),
           TextButton(
             onPressed: () async {
@@ -73,19 +74,19 @@ class _SettingsPageState extends State<SettingsPage> {
                     setState(() => _userName = newName);
                     Navigator.pop(ctx);
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(context.t('updateSuccess'))),
+                      SnackBar(content: Text('更新成功')),
                     );
                   }
                 } catch (e) {
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('${context.t('updateFailed')}: $e')),
+                      SnackBar(content: Text('更新失败: $e')),
                     );
                   }
                 }
               }
             },
-            child: Text(context.t('save')),
+            child: Text('保存'),
           ),
         ],
       ),
@@ -170,7 +171,7 @@ class _SettingsPageState extends State<SettingsPage> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: Text(context.t('close'), style: TextStyle(color: isDark ? const Color(0xFF8E95A8) : const Color(0xFFAAAAAA))),
+              child: Text('关闭', style: TextStyle(color: isDark ? const Color(0xFF8E95A8) : const Color(0xFFAAAAAA))),
             ),
           ],
         );
@@ -217,7 +218,7 @@ class _SettingsPageState extends State<SettingsPage> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: Text(context.t('close'), style: TextStyle(color: const Color(0xFF1AA4EC))),
+              child: Text('关闭', style: TextStyle(color: const Color(0xFF1AA4EC))),
             ),
           ],
         ),
@@ -251,7 +252,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 child: const Icon(Icons.bug_report, size: 20, color: Colors.white),
               ),
               const SizedBox(width: 12),
-              Text(context.t('appName'),
+              Text('Ant Messenger',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600,
                   color: isDark ? const Color(0xFFF0F2F5) : const Color(0xFF202124))),
             ],
@@ -260,12 +261,12 @@ class _SettingsPageState extends State<SettingsPage> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _aboutRow(context.t('version'), 'v1.0.0', isDark),
+              _aboutRow('版本', 'v1.0.0', isDark),
               const SizedBox(height: 8),
-              _aboutRow(context.t('platform'), 'Flutter / Dart', isDark),
+              _aboutRow('平台', 'Flutter / Dart', isDark),
               const SizedBox(height: 8),
               Text(
-                context.t('appDescription'),
+                'Ant Messenger 是一款采用 Flutter 构建的现代化即时通讯应用。支持文字、图片、语音消息，群聊，音视频通话等功能。',
                 style: TextStyle(
                   fontSize: 13,
                   color: isDark ? const Color(0xFF8E95A8) : const Color(0xFF666666),
@@ -277,7 +278,7 @@ class _SettingsPageState extends State<SettingsPage> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: Text(context.t('close')),
+              child: Text('关闭'),
             ),
           ],
         );
@@ -340,14 +341,14 @@ class _SettingsPageState extends State<SettingsPage> {
                 children: [
                   const Icon(Icons.star, size: 20, color: Color(0xFFFAAD14)),
                   const SizedBox(width: 8),
-                  Text(context.t('favoriteMessages'),
+                  Text('收藏消息',
                     style: TextStyle(
                       fontSize: 17,
                       fontWeight: FontWeight.w600,
                       color: isDark ? const Color(0xFFF0F2F5) : const Color(0xFF202124),
                     )),
                   const Spacer(),
-                  Text('${favorites.length}${context.t('people', params: {'count': ''})}',
+                  Text('${favorites.length} 条',
                     style: TextStyle(
                       fontSize: 12,
                       color: isDark ? const Color(0xFF8E95A8) : const Color(0xFFAAAAAA),
@@ -365,7 +366,7 @@ class _SettingsPageState extends State<SettingsPage> {
                             Icon(Icons.star_border, size: 48,
                               color: isDark ? const Color(0xFF252B44) : const Color(0xFFE9E9E9)),
                             const SizedBox(height: 8),
-                            Text(context.t('noFavorites'),
+                            Text('暂无收藏消息',
                               style: TextStyle(fontSize: 14,
                                 color: isDark ? const Color(0xFF8E95A8) : const Color(0xFFAAAAAA))),
                           ],
@@ -410,55 +411,10 @@ class _SettingsPageState extends State<SettingsPage> {
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.t('loadingFavoritesFailed'))),
+          SnackBar(content: Text('加载收藏失败')),
         );
       }
     }
-  }
-
-  void _showLanguageDialog() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final currentLocale = LocalizationService().locale;
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: isDark ? const Color(0xFF151B3A) : Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(context.t('language'),
-          style: TextStyle(color: isDark ? const Color(0xFFF0F2F5) : const Color(0xFF202124))),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Text('🇨🇳', style: TextStyle(fontSize: 24)),
-              title: Text(context.t('chinese'),
-                style: TextStyle(color: isDark ? const Color(0xFFF0F2F5) : const Color(0xFF202124))),
-              trailing: currentLocale.languageCode == 'zh'
-                  ? const Icon(Icons.check, color: Color(0xFF1AA4EC))
-                  : null,
-              onTap: () {
-                Navigator.pop(ctx);
-                final app = NeoAntApp.of(context);
-                if (app != null) app.setLocale(const Locale('zh'));
-              },
-            ),
-            ListTile(
-              leading: const Text('🇬🇧', style: TextStyle(fontSize: 24)),
-              title: Text(context.t('english'),
-                style: TextStyle(color: isDark ? const Color(0xFFF0F2F5) : const Color(0xFF202124))),
-              trailing: currentLocale.languageCode == 'en'
-                  ? const Icon(Icons.check, color: Color(0xFF1AA4EC))
-                  : null,
-              onTap: () {
-                Navigator.pop(ctx);
-                final app = NeoAntApp.of(context);
-                if (app != null) app.setLocale(const Locale('en'));
-              },
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   @override
@@ -472,7 +428,7 @@ class _SettingsPageState extends State<SettingsPage> {
           padding: const EdgeInsets.fromLTRB(0, 12, 0, 12),
           child: Row(
             children: [
-              Text(context.t('settings'), style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: isDark ? const Color(0xFFF0F2F5) : const Color(0xFF202124))),
+              Text('设置', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: isDark ? const Color(0xFFF0F2F5) : const Color(0xFF202124))),
               const Spacer(),
               Material(
                 color: Colors.transparent,
@@ -495,9 +451,9 @@ class _SettingsPageState extends State<SettingsPage> {
 
         // Account
         _SectionCard(isDark: isDark, children: [
-          _SettingItem(isDark: isDark, icon: Icons.lock_outlined, label: context.t('accountSecurity'), onTap: _showAccountSecurityDialog),
+          _SettingItem(isDark: isDark, icon: Icons.lock_outlined, label: '账户安全', onTap: _showAccountSecurityDialog),
           _Divider(isDark: isDark),
-          _SettingItem(isDark: isDark, icon: Icons.shield_outlined, label: context.t('privacy'), onTap: () {
+          _SettingItem(isDark: isDark, icon: Icons.shield_outlined, label: '隐私', onTap: () {
             Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => PrivacySettingsPage(userId: widget.userId)),
             );
@@ -507,15 +463,15 @@ class _SettingsPageState extends State<SettingsPage> {
 
         // General
         _SectionCard(isDark: isDark, children: [
-          _SettingItem(isDark: isDark, icon: Icons.notifications_outlined, label: context.t('notifications'), onTap: () {
+          _SettingItem(isDark: isDark, icon: Icons.notifications_outlined, label: '通知', onTap: () {
             Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => NotificationSettingsPage(userId: widget.userId)),
             );
           }),
           _Divider(isDark: isDark),
-          _SettingItem(isDark: isDark, icon: Icons.devices_outlined, label: context.t('multiDevice'), onTap: () {}),
+          _SettingItem(isDark: isDark, icon: Icons.devices_outlined, label: '多设备', onTap: () {}),
           _Divider(isDark: isDark),
-          _SettingItem(isDark: isDark, icon: Icons.palette_outlined, label: context.t('darkMode'), onTap: () {
+          _SettingItem(isDark: isDark, icon: Icons.palette_outlined, label: '深色模式', onTap: () {
             final app = NeoAntApp.of(context);
             if (app != null) app.toggleTheme();
           }, trailing: Switch(
@@ -526,8 +482,6 @@ class _SettingsPageState extends State<SettingsPage> {
             },
             activeColor: const Color(0xFF1AA4EC),
           )),
-          _Divider(isDark: isDark),
-          _SettingItem(isDark: isDark, icon: Icons.language_outlined, label: context.t('language'), onTap: _showLanguageDialog),
         ]),
         const SizedBox(height: 12),
 
@@ -536,7 +490,21 @@ class _SettingsPageState extends State<SettingsPage> {
           if (_userRole == 'admin')
             _SettingItem(isDark: isDark, icon: Icons.vpn_key_outlined, label: '邀请码管理', onTap: _showInviteCodeDialog),
           if (_userRole == 'admin') _Divider(isDark: isDark),
-          _SettingItem(isDark: isDark, icon: Icons.info_outline, label: context.t('aboutApp'), onTap: _showAboutDialog,
+          if (_userRole == 'admin')
+            _SettingItem(isDark: isDark, icon: Icons.dashboard_outlined, label: '管理后台', onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => AdminDashboardPage(userId: widget.userId)),
+              );
+            }),
+          if (_userRole == 'admin') _Divider(isDark: isDark),
+          if (_userRole == 'admin')
+            _SettingItem(isDark: isDark, icon: Icons.security_outlined, label: '双重验证', onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const Admin2faPage()),
+              );
+            }),
+          if (_userRole == 'admin') _Divider(isDark: isDark),
+          _SettingItem(isDark: isDark, icon: Icons.info_outline, label: '关于应用', onTap: _showAboutDialog,
             trailing: Text('v1.0.0', style: TextStyle(fontSize: 12, color: isDark ? const Color(0xFF8E95A8) : const Color(0xFFAAAAAA)))),
         ]),
         const SizedBox(height: 24),
@@ -549,7 +517,8 @@ class _SettingsPageState extends State<SettingsPage> {
               ApiService().disconnectWs();
               final prefs = await SharedPreferences.getInstance();
               await prefs.remove('userId');
-              await prefs.remove('authToken');
+              const storage = FlutterSecureStorage();
+              await storage.delete(key: 'authToken');
               ApiService().logout();
               if (!mounted) return;
               Navigator.of(context).pushAndRemoveUntil(
@@ -558,7 +527,7 @@ class _SettingsPageState extends State<SettingsPage> {
               );
             },
             icon: const Icon(Icons.logout, size: 16, color: Color(0xFFFF3B30)),
-            label: Text(context.t('logout'), style: const TextStyle(color: Color(0xFFFF3B30), fontSize: 14)),
+            label: Text('退出登录', style: const TextStyle(color: Color(0xFFFF3B30), fontSize: 14)),
             style: OutlinedButton.styleFrom(
               side: BorderSide(color: isDark ? const Color(0xFF252B44) : const Color(0xFFE9E9E9)),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

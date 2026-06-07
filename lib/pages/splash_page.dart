@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../services/api_service.dart';
 import 'home_page.dart';
 import 'login_page.dart';
@@ -26,8 +27,8 @@ class _SplashPageState extends State<SplashPage> {
     } catch (_) {}
     String token = '';
     try {
-      final prefs = await SharedPreferences.getInstance();
-      token = prefs.getString('authToken') ?? '';
+      const storage = FlutterSecureStorage();
+      token = await storage.read(key: 'authToken') ?? '';
       if (token.isNotEmpty) {
         ApiService().setToken(token);
       }

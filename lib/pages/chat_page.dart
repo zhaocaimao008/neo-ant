@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:record/record.dart';
+import 'package:audioplayers/audioplayers.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../services/api_service.dart';
-import '../services/l10n_helper.dart';
 import '../widgets/bottom_sheets.dart';
 import '../widgets/ant_avatar.dart';
+import '../widgets/image_preview.dart';
 import 'call_page.dart';
 import 'dart:async';
 
@@ -43,6 +46,8 @@ class _ChatPageState extends State<ChatPage> {
   int _replyToIndex = -1;
   bool _disposed = false;
   bool _loading = true;
+  bool _loadingMore = false;
+  bool _hasMore = true;
 
   // Multi-select mode
   bool _selectMode = false;
@@ -78,6 +83,7 @@ class _ChatPageState extends State<ChatPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
     _loadMessages();
     _loadDraft();
+    _scrollCtrl.addListener(_onScroll);
 
     // Typing indicator via stream
     _typingSub = ApiService().typingStream.listen((data) {
@@ -101,17 +107,71 @@ class _ChatPageState extends State<ChatPage> {
           final deletedId = msg['message_id']?.toString();
           if (deletedId != null && deletedId.isNotEmpty) {
             setState(() {
-              _messages.removeWhere((m) => m.id == deletedId);
+              // Mark as recalled instead of removing
+              final idx = _messages.indexWhere((m) => m.id == deletedId);
+              if (idx >= 0 && _messages[idx].isMe) {
+                _messages[idx] = _Msg(
+                  '已撤回', _messages[idx].isMe, _messages[idx].time,
+                  id: deletedId, read: true, recalled: true,
+                  sender: _messages[idx].sender,
+                );
+              }
             });
           }
         }
         return;
       }
       if (msg['conversation_id'] == widget.conversationId) {
+        // Handle read receipt messages
+        if (msg['type'] == 'read_receipt') {
+          final readSenderId = msg['sender_id']?.toString();
+          if (readSenderId != null) {
+            setState(() {
+              for (int i = 0; i < _messages.length; i++) {
+                if (!_messages[i].isMe && _messages[i].id != null) {
+                  _messages[i] = _Msg(
+                    _messages[i].text, _messages[i].isMe, _messages[i].time,
+                    id: _messages[i].id, read: true,
+                    isImage: _messages[i].isImage, imagePath: _messages[i].imagePath,
+                    isVoice: _messages[i].isVoice, voicePath: _messages[i].voicePath,
+                    duration: _messages[i].duration,
+                    isFile: _messages[i].isFile, fileName: _messages[i].fileName,
+                    fileSize: _messages[i].fileSize, fileUrl: _messages[i].fileUrl,
+                    sender: _messages[i].sender, recalled: _messages[i].recalled,
+                    replyToId: _messages[i].replyToId, replyText: _messages[i].replyText,
+                    replySender: _messages[i].replySender,
+                  );
+                }
+              }
+            });
+          }
+          return;
+        }
+        // Determine if this is a message we sent (already in list)
+        final existingIdx = _messages.indexWhere((m) => m.id?.toString() == msg['id']?.toString());
+        if (existingIdx >= 0) return;
+
+        // Extract reply info
+        String? replyToId = msg['reply_to']?.toString();
+        String? replyText = msg['reply_text']?.toString();
+        String? replySender = msg['reply_sender_name']?.toString();
+
+        final isFromMe = msg['sender_id'] == widget.userId;
+
+        // Auto send read receipt to sender if message is from someone else
+        if (!isFromMe && widget.targetUserId != null) {
+          ApiService().sendWsMessage({
+            'type': 'read_receipt',
+            'conversation_id': widget.conversationId,
+            'sender_id': widget.userId,
+            'target_sender_id': msg['sender_id']?.toString(),
+          });
+        }
+
         setState(() {
           _messages.add(_Msg(
             msg['text'] ?? '',
-            msg['sender_id'] == widget.userId,
+            isFromMe,
             DateTime.parse(msg['created_at'] ?? DateTime.now().toIso8601String()),
             id: msg['id']?.toString(),
             isImage: msg['type'] == 'image',
@@ -123,7 +183,11 @@ class _ChatPageState extends State<ChatPage> {
             fileName: msg['file_name'],
             fileSize: msg['file_size'],
             sender: msg['sender_name'],
-            read: true,
+            read: isFromMe, // Own messages start as read
+            recalled: msg['recalled'] == 1 || msg['recalled'] == true,
+            replyToId: replyToId,
+            replyText: replyText,
+            replySender: replySender,
           ));
         });
         Future.delayed(const Duration(milliseconds: 100), () {
@@ -148,6 +212,54 @@ class _ChatPageState extends State<ChatPage> {
     super.dispose();
   }
 
+  void _onScroll() {
+    if (_scrollCtrl.position.pixels <= 50 && !_loadingMore && _hasMore && !_loading && _messages.isNotEmpty) {
+      _loadMoreMessages();
+    }
+  }
+
+  Future<void> _loadMoreMessages() async {
+    if (_loadingMore || !_hasMore || _messages.isEmpty) return;
+    setState(() => _loadingMore = true);
+    try {
+      final oldestId = _messages.first.id;
+      final data = await ApiService().getMessages(widget.conversationId, before: oldestId, limit: 50);
+      if (_disposed) return;
+      if (data.isEmpty) {
+        _hasMore = false;
+      } else {
+        setState(() {
+          for (final m in data.reversed) {
+            final isRecalled = m['recalled'] == 1 || m['recalled'] == true;
+            _messages.insert(0, _Msg(
+              isRecalled ? '已撤回' : (m['text'] ?? ''),
+              m['sender_id'] == widget.userId,
+              DateTime.tryParse(m['created_at'] ?? '') ?? DateTime.now(),
+              id: m['id']?.toString(),
+              isImage: m['type'] == 'image',
+              imagePath: m['file_url'],
+              isVoice: m['type'] == 'voice',
+              voicePath: m['file_url'],
+              duration: m['duration'],
+              isFile: m['type'] == 'file',
+              fileName: m['file_name'],
+              fileSize: m['file_size'],
+              sender: m['sender_name'],
+              read: true,
+              recalled: isRecalled,
+              replyToId: m['reply_to']?.toString(),
+              replyText: m['reply_text']?.toString(),
+              replySender: m['reply_sender_name']?.toString(),
+            ));
+          }
+          _loadingMore = false;
+        });
+      }
+    } catch (_) {
+      if (!_disposed) setState(() => _loadingMore = false);
+    }
+  }
+
   Future<void> _loadMessages() async {
     try {
       final data = await ApiService().getMessages(widget.conversationId);
@@ -155,8 +267,9 @@ class _ChatPageState extends State<ChatPage> {
       setState(() {
         _messages.clear();
         for (final m in data) {
+          final isRecalled = m['recalled'] == 1 || m['recalled'] == true;
           _messages.add(_Msg(
-            m['text'] ?? '',
+            isRecalled ? '已撤回' : (m['text'] ?? ''),
             m['sender_id'] == widget.userId,
             DateTime.tryParse(m['created_at'] ?? '') ?? DateTime.now(),
             id: m['id']?.toString(),
@@ -170,6 +283,10 @@ class _ChatPageState extends State<ChatPage> {
             fileSize: m['file_size'],
             sender: m['sender_name'],
             read: true,
+            recalled: isRecalled,
+            replyToId: m['reply_to']?.toString(),
+            replyText: m['reply_text']?.toString(),
+            replySender: m['reply_sender_name']?.toString(),
           ));
         }
         _loading = false;
@@ -270,6 +387,11 @@ class _ChatPageState extends State<ChatPage> {
     final text = _inputCtrl.text.trim();
     if (text.isEmpty) return;
 
+    String? replyToId;
+    if (_replyToIndex >= 0 && _replyToIndex < _messages.length) {
+      replyToId = _messages[_replyToIndex].id;
+    }
+
     final msg = _Msg(text, true, DateTime.now(), read: true);
     setState(() {
       _messages.add(msg);
@@ -277,12 +399,16 @@ class _ChatPageState extends State<ChatPage> {
       _replyToIndex = -1;
     });
 
-    ApiService().sendWsMessage({
+    final wsMsg = {
       'type': 'message',
       'conversation_id': widget.conversationId,
       'sender_id': widget.userId,
       'text': text,
-    });
+    };
+    if (replyToId != null && replyToId.isNotEmpty) {
+      wsMsg['reply_to'] = replyToId;
+    }
+    ApiService().sendWsMessage(wsMsg);
 
     Future.delayed(const Duration(milliseconds: 100), () {
       if (!_disposed) _scrollToBottom();
@@ -315,9 +441,36 @@ class _ChatPageState extends State<ChatPage> {
   // ─── File Picker ────────────────────────────────────────────
   Future<void> _pickFile() async {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('请使用图片按钮发送文件'), duration: Duration(seconds: 2)),
-    );
+    try {
+      final result = await FilePicker.platform.pickFiles();
+      if (result != null && result.files.isNotEmpty) {
+        final file = result.files.first;
+        if (file.path != null) {
+          final uploadResult = await ApiService().sendMessage(
+            widget.conversationId, widget.userId, '',
+            type: 'file', filePath: file.path,
+          );
+          if (mounted) {
+            setState(() {
+              _messages.add(_Msg(
+                '', true, DateTime.now(), read: true,
+                isFile: true, fileName: file.name, fileSize: file.size,
+                id: uploadResult['id']?.toString(),
+              ));
+            });
+            Future.delayed(const Duration(milliseconds: 100), () {
+              if (!_disposed) _scrollToBottom();
+            });
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('文件发送失败: $e')),
+        );
+      }
+    }
   }
 
   void _showEmojiPicker() {
@@ -378,13 +531,19 @@ class _ChatPageState extends State<ChatPage> {
       return;
     }
 
+    if (msg.recalled) return;
+
     setState(() => _replyToIndex = index);
+    final now = DateTime.now();
+    final diff = now.difference(msg.time);
+    final canRecall = msg.isMe && diff.inMinutes < 2 && !msg.recalled;
     showMessageActions(context, isMe: msg.isMe,
       onCopy: () => _copyMsg(msg.text),
       onReply: () => _focusNode.requestFocus(),
       onDelete: () => _deleteMsg(index),
       onFavorite: () => _favoriteMsg(msg),
       onForward: () => _forwardMsg(msg),
+      onRecall: canRecall ? () => _recallMsg(index, msg) : null,
     );
   }
 
@@ -392,7 +551,7 @@ class _ChatPageState extends State<ChatPage> {
     Clipboard.setData(ClipboardData(text: text));
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.t('copied')), duration: const Duration(seconds: 1)),
+        SnackBar(content: Text('已复制'), duration: const Duration(seconds: 1)),
       );
     }
   }
@@ -403,7 +562,7 @@ class _ChatPageState extends State<ChatPage> {
     );
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.t('favorited')), duration: const Duration(seconds: 1)),
+        SnackBar(content: Text('已收藏'), duration: const Duration(seconds: 1)),
       );
     }
   }
@@ -437,7 +596,7 @@ class _ChatPageState extends State<ChatPage> {
                 ),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                  child: Text(context.t('forwardTo'), style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600,
+                  child: Text('转发到', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600,
                     color: isDark ? const Color(0xFFF0F2F5) : const Color(0xFF202124))),
                 ),
                 const Divider(height: 1),
@@ -467,7 +626,7 @@ class _ChatPageState extends State<ChatPage> {
         await ApiService().forwardMessage(widget.userId, target, msg.text, type, fileUrl);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(context.t('forwarded')), duration: const Duration(seconds: 1)),
+            SnackBar(content: Text('已转发'), duration: const Duration(seconds: 1)),
           );
         }
       }
@@ -483,7 +642,32 @@ class _ChatPageState extends State<ChatPage> {
     }
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.t('deleted')), duration: const Duration(seconds: 1)),
+        SnackBar(content: Text('已删除'), duration: const Duration(seconds: 1)),
+      );
+    }
+  }
+
+  void _recallMsg(int index, _Msg msg) {
+    final id = msg.id;
+    if (id == null || id.isEmpty) return;
+    // Use delete API to recall — backend will broadcast message:deleted
+    ApiService().deleteMessage(id, widget.conversationId);
+    setState(() {
+      _messages[index] = _Msg(
+        '已撤回', msg.isMe, msg.time,
+        id: id,
+        read: true,
+        recalled: true,
+        sender: msg.sender,
+        replyToId: msg.replyToId,
+        replyText: msg.replyText,
+        replySender: msg.replySender,
+      );
+    });
+    if (_replyToIndex == index) _replyToIndex = -1;
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('已撤回'), duration: const Duration(seconds: 1)),
       );
     }
   }
@@ -500,7 +684,7 @@ class _ChatPageState extends State<ChatPage> {
       ApiService().deleteMessage(id, widget.conversationId);
     }
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(context.t('deletedCount', params: {'count': indices.length.toString()})), duration: const Duration(seconds: 1)),
+      SnackBar(content: Text('已删除 ${indices.length} 条'), duration: const Duration(seconds: 1)),
     );
   }
 
@@ -525,18 +709,18 @@ class _ChatPageState extends State<ChatPage> {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Row(
                 children: [
-                  Text(context.t('messagesSelected', params: {'count': _selected.length.toString()}),
+                  Text('已选择 ${_selected.length} 条',
                     style: TextStyle(fontSize: 14, color: isDark ? const Color(0xFFF0F2F5) : const Color(0xFF202124))),
                   const Spacer(),
                   TextButton.icon(
                     onPressed: _batchDelete,
                     icon: const Icon(Icons.delete_outline, size: 18),
-                    label: Text(context.t('delete')),
+                    label: Text('删除'),
                     style: TextButton.styleFrom(foregroundColor: const Color(0xFFFF3B30)),
                   ),
                   TextButton(
                     onPressed: () => setState(() { _selectMode = false; _selected.clear(); }),
-                    child: Text(context.t('cancel')),
+                    child: Text('取消'),
                   ),
                 ],
               ),
@@ -560,7 +744,7 @@ class _ChatPageState extends State<ChatPage> {
                             Icon(Icons.chat_bubble_outline, size: 48,
                               color: isDark ? const Color(0xFF252B44) : const Color(0xFFE9E9E9)),
                             const SizedBox(height: 12),
-                            Text(context.t('noMessages'), style: TextStyle(fontSize: 14,
+                            Text('暂无消息', style: TextStyle(fontSize: 14,
                               color: isDark ? const Color(0xFF8E95A8) : const Color(0xFFAAAAAA))),
                           ],
                         ),
@@ -595,7 +779,7 @@ class _ChatPageState extends State<ChatPage> {
               Text(widget.conversationName,
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600,
                   color: isDark ? Colors.white : const Color(0xFF202124))),
-              Text(_typing ? context.t('typing') : (widget.online ? context.t('online') : context.t('offline')),
+              Text(_typing ? '正在输入...' : (widget.online ? '在线' : '离线'),
                 style: TextStyle(fontSize: 11, color: _typing ? const Color(0xFF1AA4EC) : const Color(0xFF52C41A))),
             ],
           ),
@@ -670,7 +854,7 @@ class _ChatPageState extends State<ChatPage> {
                 items.isEmpty
                     ? Padding(
                         padding: const EdgeInsets.all(32),
-                        child: Text(context.t('noFavorites'), style: TextStyle(color: isDark ? const Color(0xFF8E95A8) : const Color(0xFFAAAAAA))),
+                        child: Text('暂无收藏', style: TextStyle(color: isDark ? const Color(0xFF8E95A8) : const Color(0xFFAAAAAA))),
                       )
                     : Expanded(
                         child: ListView.builder(
@@ -700,21 +884,32 @@ class _ChatPageState extends State<ChatPage> {
     return ListView.builder(
       controller: _scrollCtrl,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      itemCount: _messages.length + 1,
+      itemCount: _messages.length + 1 + (_loadingMore ? 1 : 0),
       itemBuilder: (ctx, i) {
         if (i == 0) {
-          return _DateSeparator(date: '今天', isDark: isDark);
+          return Column(
+            children: [
+              if (_loadingMore)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                ),
+              _DateSeparator(date: '今天', isDark: isDark),
+            ],
+          );
         }
-        final msg = _messages[i - 1];
-        final selected = _selected.contains(i - 1);
+        final msgIndex = i - 1 - (_loadingMore ? 1 : 0);
+        if (msgIndex < 0 || msgIndex >= _messages.length) return const SizedBox.shrink();
+        final msg = _messages[msgIndex];
+        final selected = _selected.contains(msgIndex);
         return _MessageWidget(
           msg: msg,
-          index: i - 1,
+          index: msgIndex,
           isDark: isDark,
           selectMode: _selectMode,
           selected: selected,
-          onTap: () => _onMsgTap(i - 1, msg),
-          onDoubleTap: () => _setReply(i - 1),
+          onTap: () => _onMsgTap(msgIndex, msg),
+          onDoubleTap: () => _setReply(msgIndex),
         );
       },
     );
@@ -755,7 +950,7 @@ class _ChatPageState extends State<ChatPage> {
                     maxLines: null,
                     textInputAction: TextInputAction.newline,
                     decoration: InputDecoration(
-                      hintText: context.t('inputHint'),
+                      hintText: '输入消息...',
                       border: InputBorder.none,
                       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                     ),
@@ -780,13 +975,26 @@ class _ChatPageState extends State<ChatPage> {
                   onLongPressStart: (_) => _startRecording(),
                   onLongPressEnd: (_) => _stopRecording(),
                   child: Container(
-                    width: 38, height: 38,
+                    width: _isRecording ? 80 : 38,
+                    height: 38,
                     decoration: BoxDecoration(
                       color: _isRecording ? const Color(0xFFFF3B30) : Colors.transparent,
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(_isRecording ? 19 : 10),
+                      boxShadow: _isRecording
+                          ? [BoxShadow(color: const Color(0xFFFF3B30).withAlpha(80), blurRadius: 8, spreadRadius: 1)]
+                          : [],
                     ),
-                    child: Icon(_isRecording ? Icons.mic : Icons.mic_none, size: 20,
-                      color: _isRecording ? Colors.white : (isDark ? const Color(0xFF8E95A8) : const Color(0xFFAAAAAA))),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(_isRecording ? Icons.mic : Icons.mic_none, size: 20,
+                          color: _isRecording ? Colors.white : (isDark ? const Color(0xFF8E95A8) : const Color(0xFFAAAAAA))),
+                        if (_isRecording) SizedBox(width: 4),
+                        if (_isRecording)
+                          const Text('录音中...', style: TextStyle(fontSize: 11, color: Colors.white)),
+                      ],
+                    ),
                   ),
                 ),
             ],
@@ -798,7 +1006,7 @@ class _ChatPageState extends State<ChatPage> {
 }
 
 // ─── Voice Bubble ────────────────────────────────────────────────
-class _VoiceBubble extends StatelessWidget {
+class _VoiceBubble extends StatefulWidget {
   final String path;
   final int? duration;
   final bool isMe;
@@ -806,39 +1014,77 @@ class _VoiceBubble extends StatelessWidget {
   const _VoiceBubble({required this.path, this.duration, required this.isMe, required this.isDark});
 
   @override
+  State<_VoiceBubble> createState() => _VoiceBubbleState();
+}
+
+class _VoiceBubbleState extends State<_VoiceBubble> {
+  final AudioPlayer _player = AudioPlayer();
+  bool _playing = false;
+  bool _disposedVoice = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _player.onPlayerComplete.listen((_) {
+      if (!_disposedVoice && mounted) setState(() => _playing = false);
+    });
+  }
+
+  @override
+  void dispose() {
+    _disposedVoice = true;
+    _player.dispose();
+    super.dispose();
+  }
+
+  Future<void> _togglePlay() async {
+    if (_playing) {
+      await _player.pause();
+      if (!_disposedVoice) setState(() => _playing = false);
+    } else {
+      final url = widget.path.startsWith('http') ? widget.path : '${ApiService.baseUrl}/uploads/${widget.path.replaceAll('/uploads/', '')}';
+      await _player.play(UrlSource(url));
+      if (!_disposedVoice) setState(() => _playing = true);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final durText = duration != null ? '${duration}s' : '◆';
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: isMe ? const Color(0xFF1AA4EC) : (isDark ? const Color(0xFF1E254A) : Colors.white),
-        borderRadius: isMe
-            ? const BorderRadius.only(
-                topLeft: Radius.circular(14), topRight: Radius.circular(14),
-                bottomLeft: Radius.circular(14), bottomRight: Radius.circular(4))
-            : const BorderRadius.only(
-                topLeft: Radius.circular(14), topRight: Radius.circular(14),
-                bottomLeft: Radius.circular(4), bottomRight: Radius.circular(14)),
-        boxShadow: isMe ? [] : [BoxShadow(color: Colors.black.withAlpha(10), blurRadius: 4, offset: const Offset(0, 1))],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.graphic_eq, size: 20,
-            color: isMe ? Colors.white : (isDark ? Colors.white : const Color(0xFF202124))),
-          const SizedBox(width: 8),
-          Container(
-            width: 60, height: 20,
-            child: CustomPaint(
-              size: const Size(60, 20),
-              painter: _WaveformPainter(color: isMe ? Colors.white70 : (isDark ? Colors.white70 : const Color(0xFF202124).withAlpha(100))),
+    final durText = widget.duration != null ? '${widget.duration}s' : '◆';
+    return GestureDetector(
+      onTap: _togglePlay,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: widget.isMe ? const Color(0xFF1AA4EC) : (widget.isDark ? const Color(0xFF1E254A) : Colors.white),
+          borderRadius: widget.isMe
+              ? const BorderRadius.only(
+                  topLeft: Radius.circular(14), topRight: Radius.circular(14),
+                  bottomLeft: Radius.circular(14), bottomRight: Radius.circular(4))
+              : const BorderRadius.only(
+                  topLeft: Radius.circular(14), topRight: Radius.circular(14),
+                  bottomLeft: Radius.circular(4), bottomRight: Radius.circular(14)),
+          boxShadow: widget.isMe ? [] : [BoxShadow(color: Colors.black.withAlpha(10), blurRadius: 4, offset: const Offset(0, 1))],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(_playing ? Icons.pause : Icons.play_arrow, size: 20,
+              color: widget.isMe ? Colors.white : (widget.isDark ? Colors.white : const Color(0xFF202124))),
+            const SizedBox(width: 8),
+            Container(
+              width: 60, height: 20,
+              child: CustomPaint(
+                size: const Size(60, 20),
+                painter: _WaveformPainter(color: widget.isMe ? Colors.white70 : (widget.isDark ? Colors.white70 : const Color(0xFF202124).withAlpha(100))),
+              ),
             ),
-          ),
-          const SizedBox(width: 8),
-          Text(durText, style: TextStyle(fontSize: 12,
-            color: isMe ? Colors.white70 : (isDark ? Colors.white70 : const Color(0xFF202124))),
-          ),
-        ],
+            const SizedBox(width: 8),
+            Text(durText, style: TextStyle(fontSize: 12,
+              color: widget.isMe ? Colors.white70 : (widget.isDark ? Colors.white70 : const Color(0xFF202124))),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -877,7 +1123,8 @@ class _FileBubble extends StatelessWidget {
   final int? fileSize;
   final bool isMe;
   final bool isDark;
-  const _FileBubble({this.fileName, this.fileSize, required this.isMe, required this.isDark});
+  final String? fileUrl;
+  const _FileBubble({this.fileName, this.fileSize, this.fileUrl, required this.isMe, required this.isDark});
 
   String _formatSize(int? bytes) {
     if (bytes == null) return '';
@@ -888,9 +1135,17 @@ class _FileBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
+    return GestureDetector(
+      onTap: () {
+        if (fileUrl != null && fileUrl!.isNotEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('文件: $fileName'), duration: const Duration(seconds: 2)),
+          );
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
         color: isMe ? const Color(0xFF1AA4EC) : (isDark ? const Color(0xFF1E254A) : Colors.white),
         borderRadius: isMe
             ? const BorderRadius.only(
@@ -923,12 +1178,14 @@ class _FileBubble extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
+      ),
+      );
+      }
+      }
 
-// ─── Data ──────────────────────────────────────────────────────
-class _Msg {
+
+      // ─── Data ──────────────────────────────────────────────────────
+      class _Msg {
   final String? id;
   final String text;
   final bool isMe;
@@ -943,11 +1200,18 @@ class _Msg {
   final bool isFile;
   final String? fileName;
   final int? fileSize;
+  final bool recalled;
+  final String? replyToId;
+  final String? replyText;
+  final String? replySender;
+  final String? fileUrl;
 
   _Msg(this.text, this.isMe, this.time,
       {this.id, this.read = false, this.isImage = false, this.imagePath, this.sender,
        this.isVoice = false, this.voicePath, this.duration,
-       this.isFile = false, this.fileName, this.fileSize});
+       this.isFile = false, this.fileName, this.fileSize, this.fileUrl,
+       this.recalled = false,
+       this.replyToId, this.replyText, this.replySender});
 }
 
 // ─── Widgets ───────────────────────────────────────────────────
@@ -993,7 +1257,7 @@ class _MessageWidget extends StatelessWidget {
     final showSender = !msg.isMe && (msg.sender != null && msg.sender!.isNotEmpty);
 
     return GestureDetector(
-      onLongPress: onTap,
+      onLongPress: msg.recalled ? null : onTap,
       child: Padding(
         padding: const EdgeInsets.only(bottom: 10),
         child: Row(
@@ -1033,12 +1297,30 @@ class _MessageWidget extends StatelessWidget {
                       padding: const EdgeInsets.only(bottom: 3, left: 4),
                       child: Text(msg.sender!, style: const TextStyle(fontSize: 10, color: Color(0xFFAAAAAA))),
                     ),
-                  if (msg.isImage && msg.imagePath != null)
+                  if (msg.recalled)
+                    _buildRecalledBubble()
+                  else if (msg.replyToId != null && msg.replyToId!.isNotEmpty)
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _buildReplyQuote(),
+                        if (msg.isImage && msg.imagePath != null)
+                          _ImageBubble(path: msg.imagePath!, isMe: msg.isMe, isDark: isDark)
+                        else if (msg.isVoice && msg.voicePath != null)
+                          _VoiceBubble(path: msg.voicePath!, duration: msg.duration, isMe: msg.isMe, isDark: isDark)
+                        else if (msg.isFile)
+                          _FileBubble(fileName: msg.fileName, fileSize: msg.fileSize, fileUrl: msg.fileUrl, isMe: msg.isMe, isDark: isDark)
+                        else
+                          _TextBubble(text: msg.text, isMe: msg.isMe, isDark: isDark),
+                      ],
+                    )
+                  else if (msg.isImage && msg.imagePath != null)
                     _ImageBubble(path: msg.imagePath!, isMe: msg.isMe, isDark: isDark)
                   else if (msg.isVoice && msg.voicePath != null)
                     _VoiceBubble(path: msg.voicePath!, duration: msg.duration, isMe: msg.isMe, isDark: isDark)
                   else if (msg.isFile)
-                    _FileBubble(fileName: msg.fileName, fileSize: msg.fileSize, isMe: msg.isMe, isDark: isDark)
+                    _FileBubble(fileName: msg.fileName, fileSize: msg.fileSize, fileUrl: msg.fileUrl, isMe: msg.isMe, isDark: isDark)
                   else
                     _TextBubble(text: msg.text, isMe: msg.isMe, isDark: isDark),
                   const SizedBox(height: 3),
@@ -1046,7 +1328,7 @@ class _MessageWidget extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(_formatTime(msg.time), style: const TextStyle(fontSize: 10, color: Color(0xFFAAAAAA))),
-                      if (msg.isMe)
+                      if (msg.isMe && !msg.recalled)
                         Padding(
                           padding: const EdgeInsets.only(left: 3),
                           child: Icon(Icons.done_all, size: 12,
@@ -1062,6 +1344,56 @@ class _MessageWidget extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Widget _buildRecalledBubble() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E254A) : const Color(0xFFEEEEEE),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Text(
+        msg.isMe ? '你撤回了一条消息' : '${msg.sender ?? "对方"}撤回了一条消息',
+        style: const TextStyle(fontSize: 12, color: Color(0xFFAAAAAA), fontStyle: FontStyle.italic),
+      ),
+    );
+  }
+
+  Widget _buildReplyQuote() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 2),
+      padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+      decoration: BoxDecoration(
+        color: isDark ? Colors.black26 : const Color(0xFFF0F0F0),
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(msg.isMe ? 14 : 6),
+          topRight: Radius.circular(msg.isMe ? 6 : 14),
+          bottomLeft: Radius.circular(4),
+          bottomRight: Radius.circular(4),
+        ),
+        border: Border(left: BorderSide(color: const Color(0xFF1AA4EC), width: 3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            msg.replySender ?? '消息',
+            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF1AA4EC)),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          Text(
+            msg.replyText ?? '',
+            style: const TextStyle(fontSize: 11, color: Color(0xFFAAAAAA)),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
   }
 
   String _formatTime(DateTime t) {
@@ -1113,21 +1445,31 @@ class _ImageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: isDark ? const Color(0xFF252B44) : const Color(0xFFE9E9E9)),
+    return GestureDetector(
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => ImagePreviewPage(imageUrl: path)),
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(11),
-        child: Image.network(
-          path.startsWith('http') ? path : '/uploads/${path.replaceAll('/uploads/', '')}',
-          width: 180, height: 180,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => Container(
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: isDark ? const Color(0xFF252B44) : const Color(0xFFE9E9E9)),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(11),
+          child: CachedNetworkImage(
+            imageUrl: path.startsWith('http') ? path : '${ApiService.baseUrl}/uploads/${path.replaceAll('/uploads/', '')}',
             width: 180, height: 180,
-            color: isDark ? const Color(0xFF1E254A) : const Color(0xFFF2F5F9),
-            child: const Center(child: Icon(Icons.broken_image, size: 32, color: Color(0xFFAAAAAA))),
+            fit: BoxFit.cover,
+            placeholder: (_, __) => Container(
+              width: 180, height: 180,
+              color: isDark ? const Color(0xFF1E254A) : const Color(0xFFF2F5F9),
+              child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+            ),
+            errorWidget: (_, __, ___) => Container(
+              width: 180, height: 180,
+              color: isDark ? const Color(0xFF1E254A) : const Color(0xFFF2F5F9),
+              child: const Center(child: Icon(Icons.broken_image, size: 32, color: Color(0xFFAAAAAA))),
+            ),
           ),
         ),
       ),

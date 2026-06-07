@@ -6,7 +6,6 @@ import '../widgets/bottom_sheets.dart';
 import 'chat_page.dart';
 import 'profile_page.dart';
 import '../services/api_service.dart';
-import '../services/l10n_helper.dart';
 
 class ContactsPage extends StatefulWidget {
   final String userId;
@@ -20,17 +19,21 @@ class _ContactsPageState extends State<ContactsPage> {
   final _searchCtrl = TextEditingController();
   List<Map<String, dynamic>> _contacts = [];
   List<Map<String, dynamic>> _filteredContacts = [];
+  List<Map<String, dynamic>> _friendRequests = [];
   bool _loading = true;
+  bool _loadingRequests = false;
   StreamSubscription<Map>? _contactSub;
 
   @override
   void initState() {
     super.initState();
     _loadContacts();
+    _loadFriendRequests();
     _searchCtrl.addListener(_filterContacts);
     // Listen for contact:added events via WebSocket
     _contactSub = ApiService().contactStream.listen((_) {
       _loadContacts();
+      _loadFriendRequests();
     });
   }
 
@@ -56,6 +59,169 @@ class _ContactsPageState extends State<ContactsPage> {
     if (mounted) setState(() => _loading = false);
   }
 
+  Future<void> _loadFriendRequests() async {
+    if (_loadingRequests) return;
+    setState(() => _loadingRequests = true);
+    try {
+      final data = await ApiService().getFriendRequests(widget.userId);
+      if (mounted) {
+        setState(() {
+          _friendRequests = data.cast<Map<String, dynamic>>();
+          _loadingRequests = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loadingRequests = false);
+    }
+  }
+
+  void _showFriendRequestsSheet() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        maxChildSize: 0.85,
+        minChildSize: 0.3,
+        builder: (ctx, scrollCtrl) => Container(
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1E254A) : Colors.white,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+          ),
+          child: Column(
+            children: [
+              // Handle
+              Container(
+                width: 36, height: 4,
+                margin: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF252B44) : const Color(0xFFE9E9E9),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                child: Text('好友请求',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600,
+                    color: isDark ? const Color(0xFFF0F2F5) : const Color(0xFF202124))),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: _friendRequests.isEmpty
+                  ? Center(
+                      child: Text('暂无好友请求',
+                        style: TextStyle(fontSize: 14,
+                          color: isDark ? const Color(0xFF8E95A8) : const Color(0xFFAAAAAA))),
+                    )
+                  : ListView.builder(
+                      controller: scrollCtrl,
+                      itemCount: _friendRequests.length,
+                      itemBuilder: (ctx, i) {
+                        final req = _friendRequests[i];
+                        final fromName = req['from_name']?.toString() ?? '未知用户';
+                        final fromAvatar = req['from_avatar']?.toString();
+                        final reqId = req['id']?.toString() ?? '';
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                          child: Row(
+                            children: [
+                              // Avatar
+                              AntAvatar(text: fromName, size: 40),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(fromName,
+                                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500,
+                                    color: isDark ? Colors.white : const Color(0xFF202124))),
+                              ),
+                              const SizedBox(width: 8),
+                              // Accept button
+                              Container(
+                                width: 64, height: 32,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF1AA4EC),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    borderRadius: BorderRadius.circular(8),
+                                    onTap: () => _acceptFriendRequest(reqId, fromName, ctx),
+                                    child: const Center(
+                                      child: Text('接受', style: TextStyle(fontSize: 13, color: Colors.white, fontWeight: FontWeight.w500)),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              // Reject button
+                              Container(
+                                width: 64, height: 32,
+                                decoration: BoxDecoration(
+                                  color: isDark ? const Color(0xFF252B44) : const Color(0xFFF2F5F9),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    borderRadius: BorderRadius.circular(8),
+                                    onTap: () => _rejectFriendRequest(reqId, ctx),
+                                    child: Center(
+                                      child: Text('拒绝', style: TextStyle(fontSize: 13,
+                                        color: isDark ? const Color(0xFF8E95A8) : const Color(0xFFAAAAAA))),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _acceptFriendRequest(String requestId, String fromName, BuildContext sheetCtx) async {
+    try {
+      await ApiService().respondToFriendRequest(requestId, 'accepted');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已添加 $fromName 为好友'), duration: const Duration(seconds: 2)),
+        );
+      }
+      // Reload
+      _loadFriendRequests();
+      _loadContacts();
+      Navigator.of(sheetCtx).pop();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('操作失败'), duration: const Duration(seconds: 2)),
+        );
+      }
+    }
+  }
+
+  Future<void> _rejectFriendRequest(String requestId, BuildContext sheetCtx) async {
+    try {
+      await ApiService().respondToFriendRequest(requestId, 'rejected');
+      _loadFriendRequests();
+      Navigator.of(sheetCtx).pop();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('操作失败'), duration: const Duration(seconds: 2)),
+        );
+      }
+    }
+  }
+
   void _filterContacts() {
     final q = _searchCtrl.text.trim().toLowerCase();
     setState(() {
@@ -77,7 +243,7 @@ class _ContactsPageState extends State<ContactsPage> {
         final isDark = Theme.of(ctx).brightness == Brightness.dark;
         return AlertDialog(
           backgroundColor: isDark ? const Color(0xFF1E1E2E) : Colors.white,
-          title: Text(context.t('addFriend'),
+          title: Text('添加好友',
             style: TextStyle(color: isDark ? const Color(0xFFF0F2F5) : const Color(0xFF202124))),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -126,7 +292,7 @@ class _ContactsPageState extends State<ContactsPage> {
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(),
-              child: Text(context.t('cancel'),
+              child: Text('取消',
                 style: TextStyle(color: isDark ? const Color(0xFF8E95A8) : const Color(0xFFAAAAAA))),
             ),
             TextButton(
@@ -134,7 +300,7 @@ class _ContactsPageState extends State<ContactsPage> {
                 final val = ctrl.text.trim();
                 if (val.isNotEmpty) Navigator.of(ctx).pop(val);
               },
-              child: Text(context.t('send'), style: const TextStyle(color: Color(0xFF1AA4EC))),
+              child: Text('发送', style: const TextStyle(color: Color(0xFF1AA4EC))),
             ),
           ],
         );
@@ -148,13 +314,13 @@ class _ContactsPageState extends State<ContactsPage> {
         _loadContacts();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(context.t('friendRequestSent'))),
+            SnackBar(content: Text('好友请求已发送')),
           );
         }
       } catch (_) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(context.t('addFailed'))),
+            SnackBar(content: Text('添加失败')),
           );
         }
       }
@@ -189,7 +355,14 @@ class _ContactsPageState extends State<ContactsPage> {
                     physics: const AlwaysScrollableScrollPhysics(),
                     padding: EdgeInsets.zero,
                     children: [
-                      _SectionLabel(label: context.t('groups'), isDark: isDark),
+                      // Friend request row
+                      _FriendRequestTile(
+                        pendingCount: _friendRequests.length,
+                        isDark: isDark,
+                        onTap: _showFriendRequestsSheet,
+                      ),
+                      const SizedBox(height: 4),
+                      _SectionLabel(label: '群组', isDark: isDark),
                       ...groups.map((g) => _GroupTile(g: g, isDark: isDark)),
                       Divider(indent: 16, endIndent: 16, height: 1,
                         color: isDark ? const Color(0xFF252B44) : const Color(0xFFE9E9E9)),
@@ -197,7 +370,7 @@ class _ContactsPageState extends State<ContactsPage> {
                         Padding(
                           padding: const EdgeInsets.symmetric(vertical: 24),
                           child: Center(
-                            child: Text(context.t('noContacts'),
+                            child: Text('暂无联系人',
                               style: TextStyle(fontSize: 13,
                                 color: isDark ? const Color(0xFF8E95A8) : const Color(0xFFAAAAAA))),
                           ),
@@ -221,6 +394,68 @@ class _ContactsPageState extends State<ContactsPage> {
   }
 }
 
+class _FriendRequestTile extends StatelessWidget {
+  final int pendingCount;
+  final bool isDark;
+  final VoidCallback onTap;
+  const _FriendRequestTile({required this.pendingCount, required this.isDark, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Row(
+            children: [
+              Stack(
+                children: [
+                  Container(
+                    width: 40, height: 40,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFF9500),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.person_add_outlined, size: 22, color: Colors.white),
+                  ),
+                  if (pendingCount > 0)
+                    Positioned(
+                      right: -2,
+                      top: -2,
+                      child: Container(
+                        width: 18, height: 18,
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFFF3B30),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Center(
+                          child: Text(
+                            pendingCount > 99 ? '99+' : pendingCount.toString(),
+                            style: const TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text('新的好友',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500,
+                    color: isDark ? Colors.white : const Color(0xFF202124))),
+              ),
+              Icon(Icons.chevron_right, size: 18,
+                color: isDark ? const Color(0xFF8E95A8) : const Color(0xFFAAAAAA)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _Header extends StatelessWidget {
   final bool isDark;
   final VoidCallback onAddFriend;
@@ -232,7 +467,7 @@ class _Header extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 12, 8, 4),
       child: Row(
         children: [
-          Text(context.t('contacts'), style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700,
+          Text('联系人', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700,
             color: isDark ? const Color(0xFFF0F2F5) : const Color(0xFF202124))),
           const Spacer(),
           _IconBtn(Icons.person_add_alt_1, isDark, onTap: onAddFriend),
@@ -260,7 +495,7 @@ class _SearchBar extends StatelessWidget {
         child: TextField(
           controller: ctrl,
           decoration: InputDecoration(
-            hintText: context.t('searchContacts'),
+            hintText: '搜索联系人',
             hintStyle: TextStyle(fontSize: 13,
               color: isDark ? const Color(0xFF8E95A8) : const Color(0xFFAAAAAA)),
             prefixIcon: Icon(Icons.search, size: 18,

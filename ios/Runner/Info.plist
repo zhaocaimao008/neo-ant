@@ -53,6 +53,12 @@
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
 	<string>Main</string>
+	<key>NSCameraUsageDescription</key>
+	<string>NeoAnt需要相机权限以进行视频通话和拍摄照片</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>NeoAnt需要麦克风权限以发送语音消息和进行通话</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>NeoAnt需要访问相册以发送图片</string>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
