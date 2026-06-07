@@ -121,7 +121,6 @@ class _ContactsPageState extends State<ContactsPage> {
                       itemBuilder: (ctx, i) {
                         final req = _friendRequests[i];
                         final fromName = req['from_name']?.toString() ?? '未知用户';
-                        final fromAvatar = req['from_avatar']?.toString();
                         final reqId = req['id']?.toString() ?? '';
                         return Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),

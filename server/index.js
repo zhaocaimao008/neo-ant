@@ -907,19 +907,34 @@ wss.on('connection', (ws, req) => {
       }
 
       if (type === 'message') {
-        const { conversation_id, sender_id, text } = msg;
+        const { conversation_id, sender_id, text, reply_to } = msg;
         // Validate sender_id matches the connected user
         if (sender_id !== userId) return;
 
         if (!text || !text.trim()) return;
 
         const id = uuidv4();
-        db.prepare('INSERT INTO messages (id, conversation_id, sender_id, text) VALUES (?, ?, ?, ?)')
-          .run(id, conversation_id, sender_id, stripHtml(text));
+        // Handle reply_to reference
+        let replyToId = null;
+        if (reply_to) {
+          const refMsg = db.prepare('SELECT id FROM messages WHERE id = ? AND conversation_id = ?').get(reply_to, conversation_id);
+          if (refMsg) replyToId = reply_to;
+        }
+        if (replyToId) {
+          db.prepare('INSERT INTO messages (id, conversation_id, sender_id, text, reply_to) VALUES (?, ?, ?, ?, ?)')
+            .run(id, conversation_id, sender_id, stripHtml(text), replyToId);
+        } else {
+          db.prepare('INSERT INTO messages (id, conversation_id, sender_id, text) VALUES (?, ?, ?, ?)')
+            .run(id, conversation_id, sender_id, stripHtml(text));
+        }
 
         const fullMsg = db.prepare(`
-          SELECT m.*, u.name as sender_name, u.avatar as sender_avatar
-          FROM messages m JOIN users u ON u.id = m.sender_id WHERE m.id = ?
+          SELECT m.*, u.name as sender_name, u.avatar as sender_avatar,
+            r.text as reply_text, r.type as reply_type, ru.name as reply_sender_name
+          FROM messages m JOIN users u ON u.id = m.sender_id
+          LEFT JOIN messages r ON r.id = m.reply_to
+          LEFT JOIN users ru ON ru.id = r.sender_id
+          WHERE m.id = ?
         `).get(id);
 
         const members = db.prepare('SELECT user_id FROM conversation_members WHERE conversation_id = ?')
@@ -951,6 +966,17 @@ wss.on('connection', (ws, req) => {
           if (m.user_id === sender_id) continue;
           const clients = wsClients.get(m.user_id);
           if (clients) clients.forEach(c => { try { c.send(JSON.stringify({ type: 'typing', conversation_id, sender_id })); } catch {} });
+        }
+      }
+
+      // Read receipt relay
+      if (type === 'read_receipt') {
+        const { conversation_id, sender_id, target_sender_id } = msg;
+        if (target_sender_id) {
+          const targetClients = wsClients.get(target_sender_id);
+          if (targetClients) {
+            targetClients.forEach(c => { try { c.send(JSON.stringify({ type: 'read_receipt', conversation_id, sender_id })); } catch {} });
+          }
         }
       }
     } catch(e) { console.error('WS error:', e.message); }

@@ -1394,7 +1394,6 @@ class _MessageWidget extends StatelessWidget {
       ),
     );
   }
-  }
 
   String _formatTime(DateTime t) {
     return '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';

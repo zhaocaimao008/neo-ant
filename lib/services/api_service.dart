@@ -393,7 +393,7 @@ class ApiService {
             type == 'call:ice' || type == 'call:end' ||
             type == 'call:busy') {
           _callController.add(parsed);
-        } else if (type == 'contact:added') {
+        } else if (type == 'contact:added' || type == 'friend_request') {
           _contactController.add(parsed);
         } else if (type == 'message:deleted') {
           _messageController.add(parsed);
